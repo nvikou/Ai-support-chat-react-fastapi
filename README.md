@@ -1,6 +1,6 @@
 # VateCon — AI Support Agent
 
-> AI-powered customer support automation system — built for the VateCon hackathon.
+> AI-powered customer support automation system.
 
 ---
 
