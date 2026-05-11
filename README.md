@@ -28,7 +28,7 @@ VateCon AI Support Agent is a complete solution that enables a company to automa
 
 ### Admin dashboard (`/admin`)
 
-![VateCon Architecture](README_image/photo1.png)
+![VateCon Architecture](photo1.png)
 
 - Global statistics: number of conversations, AI resolution rate, escalations, today’s conversations
 - Distribution chart (resolved by AI / escalated / closed)
@@ -38,7 +38,7 @@ VateCon AI Support Agent is a complete solution that enables a company to automa
 
 ### Knowledge Base (`/knowledge`)
 
-![VateCon Architecture](README_image/photo2.png)
+![VateCon Architecture](photo2.png)
 
 **Document upload**
 Drop a PDF or TXT file. The system automatically splits it into chunks, generates embeddings via OpenAI, and indexes them in ChromaDB. The agent then uses this information to answer clients.
