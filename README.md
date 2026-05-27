@@ -6,13 +6,14 @@
 
 ## Overview
 
-
 VateCon AI Support Agent is a complete solution that enables a company to automate 70–80% of its customer support tickets using AI. The agent responds in real time, cites its sources, indicates its confidence score, and automatically escalates complex cases to a human.
 
 **Tech stack:**
 - **Backend:** FastAPI + LangChain + OpenAI GPT-4o + ChromaDB (RAG) + PostgreSQL
 - **Frontend:** React + TypeScript + Tailwind CSS + WebSocket
 - **Infrastructure:** Docker Compose (4 orchestrated services)
+
+![VateCon Architecture](photo3.png)
 
 ---
 
