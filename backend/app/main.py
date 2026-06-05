@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.database import init_db
 from app.config import get_settings
-from app.routes import chat, knowledge, admin
+from app.routes import chat, knowledge, admin, auth, me
 
 settings = get_settings()
 
@@ -29,6 +29,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
+app.include_router(me.router)
 app.include_router(chat.router)
 app.include_router(knowledge.router)
 app.include_router(admin.router)

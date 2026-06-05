@@ -3,9 +3,10 @@ import tempfile
 import os
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select
 from app.database import get_db
-from app.models import KnowledgeDocument
+from app.deps import require_admin
+from app.models import KnowledgeDocument, User
 from app.agent import get_agent
 from pydantic import BaseModel
 
@@ -26,6 +27,7 @@ class FAQBatch(BaseModel):
 async def upload_document(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
 ):
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
@@ -68,14 +70,20 @@ async def upload_document(
 
 
 @router.post("/faq")
-async def add_faq(batch: FAQBatch):
+async def add_faq(
+    batch: FAQBatch,
+    _: User = Depends(require_admin),
+):
     agent = get_agent()
     count = await agent.add_faq_entries([e.model_dump() for e in batch.entries])
     return {"entries_added": count}
 
 
 @router.get("/documents")
-async def list_documents(db: AsyncSession = Depends(get_db)):
+async def list_documents(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
     result = await db.execute(select(KnowledgeDocument).order_by(KnowledgeDocument.uploaded_at.desc()))
     docs = result.scalars().all()
     return [

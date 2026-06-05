@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Upload, FileText, Plus, Trash2 } from 'lucide-react'
-import clsx from 'clsx'
+import { apiFetch, apiJson } from '../lib/api'
 
 type Doc = { id: number; filename: string; chunk_count: number; uploaded_at: string }
 type FAQEntry = { question: string; answer: string; category: string }
@@ -13,8 +13,8 @@ export default function KnowledgePage() {
   const fileRef = useRef<HTMLInputElement>(null)
 
   const fetchDocs = async () => {
-    const res = await fetch('/api/knowledge/documents')
-    setDocs(await res.json())
+    const data = await apiJson<Doc[]>('/knowledge/documents')
+    setDocs(data)
   }
 
   useEffect(() => { fetchDocs() }, [])
@@ -26,7 +26,7 @@ export default function KnowledgePage() {
     const form = new FormData()
     form.append('file', file)
     try {
-      const res = await fetch('/api/knowledge/upload', { method: 'POST', body: form })
+      const res = await apiFetch('/knowledge/upload', { method: 'POST', body: form })
       if (res.ok) fetchDocs()
       else alert('Upload failed: ' + (await res.json()).detail)
     } finally {
@@ -43,9 +43,8 @@ export default function KnowledgePage() {
   const saveFaq = async () => {
     const valid = faqEntries.filter((e) => e.question && e.answer)
     if (!valid.length) return
-    const res = await fetch('/api/knowledge/faq', {
+    const res = await apiFetch('/knowledge/faq', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ entries: valid }),
     })
     const data = await res.json()

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ElementType } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
-import { MessageSquare, AlertTriangle, CheckCircle, TrendingUp, Eye, Check } from 'lucide-react'
+import { MessageSquare, AlertTriangle, CheckCircle, TrendingUp, Eye, Check, Users } from 'lucide-react'
+import { apiFetch, apiJson } from '../lib/api'
 import clsx from 'clsx'
 
 type Stats = {
@@ -9,13 +10,18 @@ type Stats = {
   resolved: number
   today: number
   ai_resolution_rate: number
+  total_users: number
 }
 
 type Conversation = {
   id: string
   session_id: string
+  title: string | null
   customer_name: string | null
   customer_email: string | null
+  user_id: string | null
+  user_name: string | null
+  user_email: string | null
   status: string
   escalated: boolean
   escalation_reason: string | null
@@ -55,8 +61,8 @@ export default function AdminPage() {
 
   const fetchData = async () => {
     const [statsRes, convsRes] = await Promise.all([
-      fetch('/api/admin/stats'),
-      fetch(`/api/admin/conversations${filter !== 'all' ? `?status=${filter}` : ''}`),
+      apiFetch('/admin/stats'),
+      apiFetch(`/admin/conversations${filter !== 'all' ? `?status=${filter}` : ''}`),
     ])
     setStats(await statsRes.json())
     setConversations(await convsRes.json())
@@ -66,12 +72,12 @@ export default function AdminPage() {
 
   const viewMessages = async (id: string) => {
     setSelectedConv(id)
-    const res = await fetch(`/api/admin/conversations/${id}/messages`)
+    const res = await apiFetch(`/admin/conversations/${id}/messages`)
     setMessages(await res.json())
   }
 
   const resolve = async (id: string) => {
-    await fetch(`/api/admin/conversations/${id}/resolve`, { method: 'PATCH' })
+    await apiFetch(`/admin/conversations/${id}/resolve`, { method: 'PATCH' })
     fetchData()
   }
 
@@ -89,11 +95,12 @@ export default function AdminPage() {
 
       {/* Stats */}
       {stats && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <StatCard label="Total Conversations" value={stats.total_conversations} icon={MessageSquare} color="bg-brand-600" />
           <StatCard label="Today" value={stats.today} icon={TrendingUp} color="bg-indigo-500" />
           <StatCard label="Escalated" value={stats.escalated} icon={AlertTriangle} color="bg-amber-500" />
           <StatCard label="AI Resolution Rate" value={`${stats.ai_resolution_rate}%`} icon={CheckCircle} color="bg-emerald-500" />
+          <StatCard label="Registered Users" value={stats.total_users} icon={Users} color="bg-violet-500" />
         </div>
       )}
 
@@ -136,9 +143,11 @@ export default function AdminPage() {
               <div key={conv.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-800 truncate">
-                    {conv.customer_name ?? conv.session_id.slice(0, 8) + '...'}
+                    {conv.title || conv.customer_name || conv.user_name || conv.session_id.slice(0, 8) + '...'}
                   </p>
-                  <p className="text-xs text-gray-400">{new Date(conv.updated_at).toLocaleString()}</p>
+                  <p className="text-xs text-gray-400">
+                    {conv.user_email || conv.customer_email || 'Anonymous'} · {new Date(conv.updated_at).toLocaleString()}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2 ml-2">
                   <span className={clsx('text-xs px-2 py-0.5 rounded-full font-medium', {

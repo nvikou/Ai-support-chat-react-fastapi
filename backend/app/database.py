@@ -20,3 +20,9 @@ async def get_db():
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        from app.migrate import run_migrations
+        await run_migrations(conn)
+
+    async with AsyncSessionLocal() as session:
+        from app.seed import seed_admin
+        await seed_admin(session)

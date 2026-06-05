@@ -10,6 +10,15 @@ class Settings(BaseSettings):
     secret_key: str = "change-this-in-production"
     environment: str = "development"
     allowed_origins: str = "http://localhost:3000"
+    access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 7
+    admin_email: str = "admin@vatecon.com"
+    admin_password: str = "Admin123!"
+    cookie_secure: bool = False
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.lower() == "production"
 
     @property
     def origins_list(self) -> list[str]:
