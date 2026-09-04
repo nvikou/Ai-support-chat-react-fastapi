@@ -10,6 +10,11 @@ class Settings(BaseSettings):
     openai_max_retries: int = 3
     circuit_breaker_threshold: int = 5
     circuit_breaker_reset_seconds: float = 60.0
+    # Composite confidence (not LLM self-scores)
+    confidence_escalation_threshold: float = 0.5
+    confidence_uncertainty_threshold: float = 0.7
+    retrieval_min_similarity: float = 0.35
+    groundedness_enabled: bool = True
     database_url: str
     redis_url: str = "redis://localhost:6379"
     secret_key: str = "change-this-in-production"
