@@ -11,6 +11,8 @@ from langchain.memory import ConversationBufferWindowMemory
 from langchain.prompts import PromptTemplate
 from langchain.schema import Document
 from app.config import get_settings
+from app.exceptions import LLMError
+from app.services.llm_client import get_llm_client
 
 settings = get_settings()
 
@@ -59,16 +61,20 @@ def split_markdown_text(markdown_text: str, strip_headers: bool = False) -> list
 class SupportAgent:
     def __init__(self):
         self.embeddings = OpenAIEmbeddings(api_key=settings.openai_api_key)
-        self.llm = ChatOpenAI(
-            api_key=settings.openai_api_key,
-            model=settings.openai_model,
-            temperature=0.3,
-        )
+        self.llm = self._build_llm(settings.openai_model)
+        self.llm_client = get_llm_client()
         self.vectorstore = self._load_or_create_vectorstore()
         # Splitter de secours pour les textes non-Markdown (PDF, TXT brut)
         self.fallback_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200,
+        )
+
+    def _build_llm(self, model: str) -> ChatOpenAI:
+        return ChatOpenAI(
+            api_key=settings.openai_api_key,
+            model=model,
+            temperature=0.3,
         )
 
     def _load_or_create_vectorstore(self) -> FAISS:
@@ -89,7 +95,7 @@ class SupportAgent:
     def _save_vectorstore(self):
         self.vectorstore.save_local(FAISS_PATH)
 
-    def _get_chain(self, session_history: list[dict]):
+    def _get_chain(self, session_history: list[dict], model: str | None = None):
         prompt = PromptTemplate(
             input_variables=["context", "chat_history", "question"],
             template=SYSTEM_PROMPT,
@@ -110,8 +116,9 @@ class SupportAgent:
             elif msg["role"] == "assistant":
                 memory.chat_memory.add_ai_message(msg["content"])
 
+        llm = self.llm if model is None else self._build_llm(model)
         return ConversationalRetrievalChain.from_llm(
-            llm=self.llm,
+            llm=llm,
             retriever=retriever,
             memory=memory,
             combine_docs_chain_kwargs={"prompt": prompt},
@@ -120,9 +127,29 @@ class SupportAgent:
         )
 
     async def answer(self, question: str, history: list[dict]) -> dict:
-        chain = self._get_chain(history)
-        result = await chain.ainvoke({"question": question})
+        async def _operation(model: str) -> dict:
+            chain = self._get_chain(history, model=model)
+            return await chain.ainvoke({"question": question})
 
+        try:
+            call = await self.llm_client.invoke(_operation)
+        except LLMError as exc:
+            # Support must fail toward a human, never a raw stacktrace.
+            return {
+                "answer": (
+                    "I'm temporarily unable to process your "
+                    "request. Connecting you with a human agent."
+                ),
+                "confidence": 0.0,
+                "sources": [],
+                "should_escalate": True,
+                "escalation_reason": (
+                    f"LLM unavailable — {exc}"
+                ),
+                "degraded": True,
+            }
+
+        result = call.value
         raw_answer = result["answer"]
         source_docs = result.get("source_documents", [])
 
@@ -136,15 +163,35 @@ class SupportAgent:
             except ValueError:
                 confidence = 0.8
 
-        sources = list({doc.metadata.get("source", "Knowledge Base") for doc in source_docs})
-        should_escalate = confidence < 0.5 or self._detect_escalation_keywords(question)
+        sources = list({
+            doc.metadata.get("source", "Knowledge Base")
+            for doc in source_docs
+        })
+        should_escalate = (
+            confidence < 0.5
+            or self._detect_escalation_keywords(question)
+            or call.degraded
+        )
+        escalation_reason = None
+        if should_escalate:
+            if call.degraded:
+                escalation_reason = (
+                    "Answer served via fallback model "
+                    f"({call.model}) — verify with a human"
+                )
+            else:
+                escalation_reason = self._get_escalation_reason(
+                    confidence,
+                    question,
+                )
 
         return {
             "answer": answer_text,
             "confidence": confidence,
             "sources": sources,
             "should_escalate": should_escalate,
-            "escalation_reason": self._get_escalation_reason(confidence, question) if should_escalate else None,
+            "escalation_reason": escalation_reason,
+            "degraded": call.degraded,
         }
 
     def _detect_escalation_keywords(self, text: str) -> bool:
