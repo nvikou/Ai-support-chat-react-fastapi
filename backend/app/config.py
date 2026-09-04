@@ -5,6 +5,11 @@ from functools import lru_cache
 class Settings(BaseSettings):
     openai_api_key: str
     openai_model: str = "gpt-4o"
+    openai_fallback_model: str = "gpt-4o-mini"
+    openai_timeout_seconds: float = 30.0
+    openai_max_retries: int = 3
+    circuit_breaker_threshold: int = 5
+    circuit_breaker_reset_seconds: float = 60.0
     database_url: str
     redis_url: str = "redis://localhost:6379"
     secret_key: str = "change-this-in-production"
