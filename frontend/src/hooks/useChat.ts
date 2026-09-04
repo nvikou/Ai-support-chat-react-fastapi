@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import { getAccessToken } from '../lib/api'
+import { apiJson, getAccessToken } from '../lib/api'
 
 export type Message = {
   id: string
@@ -19,6 +19,11 @@ type Options = {
   sessionId?: string
   initialMessages?: Message[]
   onTitleChange?: (title: string) => void
+}
+
+type WsTicketResponse = {
+  ticket: string
+  expires_in: number
 }
 
 export function useChat({
@@ -48,57 +53,68 @@ export function useChat({
     }
 
     wsRef.current?.close()
-
-    const wsUrl =
-      `${window.location.protocol === 'https:' ? 'wss' : 'ws'}` +
-      `://${window.location.host}/ws/chat/${sessionId.current}` +
-      `?token=${encodeURIComponent(token)}`
-
     setStatus('connecting')
-    const ws = new WebSocket(wsUrl)
-    wsRef.current = ws
 
-    ws.onopen = () => setStatus('connected')
-    ws.onclose = () => setStatus('disconnected')
-    ws.onerror = () => setStatus('error')
+    void (async () => {
+      try {
+        // One-time ticket over HTTPS — JWT must never appear in the WS URL.
+        const { ticket } = await apiJson<WsTicketResponse>(
+          '/auth/ws-ticket',
+          { method: 'POST' },
+        )
+        const wsUrl =
+          `${window.location.protocol === 'https:' ? 'wss' : 'ws'}` +
+          `://${window.location.host}/ws/chat/${sessionId.current}` +
+          `?ticket=${encodeURIComponent(ticket)}`
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data)
-      if (data.type === 'connected') {
-        setEscalated(data.escalated)
-        if (data.title) onTitleChange?.(data.title)
-      } else if (data.type === 'typing') {
-        setIsTyping(true)
-      } else if (data.type === 'message') {
-        setIsTyping(false)
-        setEscalated(data.escalated)
-        if (data.title) onTitleChange?.(data.title)
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uuidv4(),
-            role: 'assistant',
-            content: data.content,
-            confidence: data.confidence,
-            sources: data.sources,
-            escalated: data.escalated,
-            escalationReason: data.escalation_reason,
-            timestamp: new Date(),
-          },
-        ])
-      } else if (data.type === 'error') {
-        setIsTyping(false)
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uuidv4(),
-            role: 'system',
-            content: data.content || 'An error occurred.',
-            timestamp: new Date(),
-          },
-        ])
+        const ws = new WebSocket(wsUrl)
+        wsRef.current = ws
+
+        ws.onopen = () => setStatus('connected')
+        ws.onclose = () => setStatus('disconnected')
+        ws.onerror = () => setStatus('error')
+
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data)
+          if (data.type === 'connected') {
+            setEscalated(data.escalated)
+            if (data.title) onTitleChange?.(data.title)
+          } else if (data.type === 'typing') {
+            setIsTyping(true)
+          } else if (data.type === 'message') {
+            setIsTyping(false)
+            setEscalated(data.escalated)
+            if (data.title) onTitleChange?.(data.title)
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: uuidv4(),
+                role: 'assistant',
+                content: data.content,
+                confidence: data.confidence,
+                sources: data.sources,
+                escalated: data.escalated,
+                escalationReason: data.escalation_reason,
+                timestamp: new Date(),
+              },
+            ])
+          } else if (data.type === 'error') {
+            setIsTyping(false)
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: uuidv4(),
+                role: 'system',
+                content: data.content || 'An error occurred.',
+                timestamp: new Date(),
+              },
+            ])
+          }
+        }
+      } catch {
+        setStatus('error')
       }
-    }
+    })()
   }, [onTitleChange])
 
   useEffect(() => {

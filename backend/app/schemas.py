@@ -26,3 +26,8 @@ class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserPublic
+
+
+class WsTicketResponse(BaseModel):
+    ticket: str
+    expires_in: int

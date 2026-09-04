@@ -8,7 +8,13 @@ from app.config import get_settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models import RefreshToken, User
-from app.schemas import AuthResponse, LoginRequest, RegisterRequest, UserPublic
+from app.schemas import (
+    AuthResponse,
+    LoginRequest,
+    RegisterRequest,
+    UserPublic,
+    WsTicketResponse,
+)
 from app.security import (
     REFRESH_COOKIE,
     create_access_token,
@@ -18,6 +24,9 @@ from app.security import (
     refresh_token_expires_at,
     verify_password,
 )
+from app.redis_client import get_redis
+from app.services.ws_tickets import DEFAULT_TTL_SECONDS
+from app.services.ws_tickets import WsTicketStore
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 settings = get_settings()
@@ -181,3 +190,16 @@ async def logout(
 @router.get("/me", response_model=UserPublic)
 async def get_me(user: User = Depends(get_current_user)):
     return UserPublic.model_validate(user)
+
+
+@router.post("/ws-ticket", response_model=WsTicketResponse)
+async def create_ws_ticket(
+    user: User = Depends(get_current_user),
+):
+    """Mint a one-time ticket for WebSocket auth (no JWT in URL)."""
+    store = WsTicketStore(await get_redis(), ttl_seconds=DEFAULT_TTL_SECONDS)
+    ticket = await store.issue(user_id=user.id)
+    return WsTicketResponse(
+        ticket=ticket,
+        expires_in=DEFAULT_TTL_SECONDS,
+    )
