@@ -1,0 +1,23 @@
+en:
+  legal:
+    - lawsuit
+    - legal
+  financial:
+    - refund
+    - fraud
+    - cancel account
+  frustration:
+    - very upset
+    - furious
+  explicit_request:
+    - speak to manager
+    - human agent
+
+fr:
+  legal: []
+  financial:
+    - remboursement
+    - arnaque
+  frustration: []
+  explicit_request:
+    - parler à un humain
