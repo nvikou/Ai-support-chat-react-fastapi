@@ -10,6 +10,7 @@ from app.agent import get_agent
 from app.database import AsyncSessionLocal
 from app.models import Conversation, Message, User
 from app.redis_client import get_redis
+from app.services.ws_errors import build_ws_client_error
 from app.services.ws_tickets import WsTicketStore
 
 router = APIRouter()
@@ -166,5 +167,5 @@ async def chat_websocket(
 
         except WebSocketDisconnect:
             pass
-        except Exception as e:
-            await websocket.send_json({"type": "error", "content": str(e)})
+        except Exception as exc:
+            await websocket.send_json(build_ws_client_error(exc))
