@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     admin_email: str
     admin_password: str
     cookie_secure: bool = False
+    # Knowledge upload hard cap (streamed; default 10 MiB)
+    upload_max_bytes: int = 10 * 1024 * 1024
 
     model_config = SettingsConfigDict(env_file=".env")
 
