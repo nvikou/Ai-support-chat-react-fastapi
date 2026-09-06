@@ -1,16 +1,19 @@
-import hashlib
-import tempfile
 import os
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from app.config import get_settings
 from app.database import get_db
 from app.deps import require_admin
 from app.models import KnowledgeDocument, User
 from app.agent import get_agent
+from app.services.upload_security import UploadTooLargeError
+from app.services.upload_security import UploadTypeRejectedError
+from app.services.upload_security import save_upload_streaming
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
+settings = get_settings()
 
 
 class FAQEntry(BaseModel):
@@ -32,35 +35,46 @@ async def upload_document(
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
 
-    allowed_types = {"application/pdf", "text/plain", "text/markdown"}
-    if file.content_type not in allowed_types:
-        raise HTTPException(status_code=400, detail="Only PDF and text files are supported")
+    try:
+        saved = await save_upload_streaming(
+            file,
+            max_bytes=settings.upload_max_bytes,
+        )
+    except UploadTooLargeError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=str(exc),
+        ) from exc
+    except UploadTypeRejectedError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=str(exc),
+        ) from exc
 
-    content = await file.read()
-    content_hash = hashlib.sha256(content).hexdigest()
-
-    # Check duplicate
     result = await db.execute(
-        select(KnowledgeDocument).where(KnowledgeDocument.content_hash == content_hash)
+        select(KnowledgeDocument).where(
+            KnowledgeDocument.content_hash == saved.content_hash
+        )
     )
     if result.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Document already uploaded")
-
-    # Save to temp file and ingest
-    suffix = ".pdf" if file.content_type == "application/pdf" else ".txt"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
+        os.unlink(saved.path)
+        raise HTTPException(
+            status_code=409,
+            detail="Document already uploaded",
+        )
 
     try:
         agent = get_agent()
-        chunk_count = await agent.ingest_document(tmp_path, file.filename)
+        chunk_count = await agent.ingest_document(
+            saved.path,
+            file.filename,
+        )
     finally:
-        os.unlink(tmp_path)
+        os.unlink(saved.path)
 
     doc = KnowledgeDocument(
         filename=file.filename,
-        content_hash=content_hash,
+        content_hash=saved.content_hash,
         chunk_count=chunk_count,
     )
     db.add(doc)
@@ -75,7 +89,9 @@ async def add_faq(
     _: User = Depends(require_admin),
 ):
     agent = get_agent()
-    count = await agent.add_faq_entries([e.model_dump() for e in batch.entries])
+    count = await agent.add_faq_entries(
+        [e.model_dump() for e in batch.entries]
+    )
     return {"entries_added": count}
 
 
@@ -84,7 +100,11 @@ async def list_documents(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    result = await db.execute(select(KnowledgeDocument).order_by(KnowledgeDocument.uploaded_at.desc()))
+    result = await db.execute(
+        select(KnowledgeDocument).order_by(
+            KnowledgeDocument.uploaded_at.desc()
+        )
+    )
     docs = result.scalars().all()
     return [
         {

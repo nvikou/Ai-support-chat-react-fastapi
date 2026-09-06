@@ -8,8 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent import get_agent
 from app.database import AsyncSessionLocal
-from app.deps import get_user_from_access_token
-from app.models import Conversation, Message
+from app.models import Conversation, Message, User
+from app.redis_client import get_redis
+from app.services.ws_errors import build_ws_client_error
+from app.services.ws_tickets import WsTicketStore
 
 router = APIRouter()
 
@@ -25,13 +27,26 @@ def _truncate_title(text: str, max_len: int = 80) -> str:
 async def chat_websocket(
     websocket: WebSocket,
     session_id: str,
-    token: str = Query(...),
+    ticket: str = Query(...),
 ):
     await websocket.accept()
 
     async with AsyncSessionLocal() as db:
-        user = await get_user_from_access_token(token, db)
-        if not user:
+        store = WsTicketStore(await get_redis())
+        user_id = await store.consume(ticket)
+        if not user_id:
+            await websocket.send_json({
+                "type": "error",
+                "content": "Authentication required",
+            })
+            await websocket.close(code=4401)
+            return
+
+        result_user = await db.execute(
+            select(User).where(User.id == user_id)
+        )
+        user = result_user.scalar_one_or_none()
+        if not user or not user.is_active:
             await websocket.send_json({
                 "type": "error",
                 "content": "Authentication required",
@@ -152,5 +167,5 @@ async def chat_websocket(
 
         except WebSocketDisconnect:
             pass
-        except Exception as e:
-            await websocket.send_json({"type": "error", "content": str(e)})
+        except Exception as exc:
+            await websocket.send_json(build_ws_client_error(exc))
