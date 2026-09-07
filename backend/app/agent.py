@@ -21,6 +21,9 @@ from app.exceptions import LLMError
 from app.services.confidence import distance_to_similarity
 from app.services.confidence import safe_compute_confidence
 from app.services.escalation import match_escalation
+from app.services.faiss_integrity import FaissIntegrityError
+from app.services.faiss_integrity import verify_index_digest
+from app.services.faiss_integrity import write_index_digest
 from app.services.groundedness import GroundednessCache
 from app.services.groundedness import assess_groundedness
 from app.services.llm_client import get_llm_client
@@ -88,6 +91,20 @@ class SupportAgent:
         Path(FAISS_PATH).mkdir(parents=True, exist_ok=True)
         index_file = Path(FAISS_PATH) / "index.faiss"
         if index_file.exists():
+            # Digest check BEFORE pickle load — fail closed on tamper.
+            try:
+                verify_index_digest(FAISS_PATH)
+            except FaissIntegrityError:
+                logger.exception(
+                    "faiss_integrity_refused_load",
+                    extra={
+                        "event": "faiss_integrity_refused_load",
+                        "path": FAISS_PATH,
+                    },
+                )
+                raise
+            # LangChain still requires this flag to load index.pkl;
+            # integrity is enforced by the digest above. See SECURITY.md.
             return FAISS.load_local(
                 FAISS_PATH,
                 self.embeddings,
@@ -99,10 +116,12 @@ class SupportAgent:
         )
         store = FAISS.from_documents([dummy], self.embeddings)
         store.save_local(FAISS_PATH)
+        write_index_digest(FAISS_PATH)
         return store
 
     def _save_vectorstore(self) -> None:
         self.vectorstore.save_local(FAISS_PATH)
+        write_index_digest(FAISS_PATH)
 
     def _retrieve_with_scores(
         self,
