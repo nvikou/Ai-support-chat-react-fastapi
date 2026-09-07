@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +30,7 @@ from app.services.rate_limit import REGISTER_WINDOW_SECONDS
 from app.services.rate_limit import rate_limit_dependency
 from app.services.ws_tickets import DEFAULT_TTL_SECONDS
 from app.services.ws_tickets import WsTicketStore
+from app.timeutils import utc_now
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 settings = get_settings()
@@ -67,7 +66,7 @@ async def _issue_tokens(
             expires_at=refresh_token_expires_at(),
         )
     )
-    user.last_login_at = datetime.utcnow()
+    user.last_login_at = utc_now()
     await db.commit()
     _set_refresh_cookie(response, refresh)
     return AuthResponse(
@@ -156,7 +155,7 @@ async def refresh_token(
         )
     )
     stored = result.scalar_one_or_none()
-    if not stored or stored.expires_at < datetime.utcnow():
+    if not stored or stored.expires_at < utc_now():
         _clear_refresh_cookie(response)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

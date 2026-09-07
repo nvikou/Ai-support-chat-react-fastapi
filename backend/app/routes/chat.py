@@ -1,6 +1,5 @@
 import json
 import uuid
-from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy import select
@@ -16,6 +15,7 @@ from app.services.rate_limit import WS_MESSAGE_WINDOW_SECONDS
 from app.services.rate_limit import enforce_user_rate_limit
 from app.services.ws_errors import build_ws_client_error
 from app.services.ws_tickets import WsTicketStore
+from app.timeutils import utc_now
 
 router = APIRouter()
 
@@ -171,7 +171,7 @@ async def chat_websocket(
                     conversation.escalation_reason = response["escalation_reason"]
                     conversation.status = "escalated"
 
-                conversation.updated_at = datetime.utcnow()
+                conversation.updated_at = utc_now()
                 await db.commit()
 
                 await websocket.send_json({

@@ -76,6 +76,8 @@ re-ingest) rather than hand-editing `index.sha256` on a suspect tree.
 - Production rejects missing/weak `SECRET_KEY`
 - Knowledge uploads are size-capped and sniffed via magic bytes
 - Sliding-window rate limits on login, register, upload, and chat
+- Timestamps use timezone-aware UTC (`datetime.now(timezone.utc)`),
+  not deprecated naive `datetime.utcnow()`
 
 ## Responsible disclosure
 

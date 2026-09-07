@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +6,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.deps import require_admin
 from app.models import Conversation, Message, User
+from app.timeutils import utc_now
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -28,7 +27,7 @@ async def get_stats(
         .select_from(Conversation)
         .where(Conversation.status == "resolved")
     )
-    today = datetime.utcnow().replace(
+    today = utc_now().replace(
         hour=0, minute=0, second=0, microsecond=0
     )
     today_count = await db.scalar(
@@ -134,7 +133,7 @@ async def resolve_conversation(
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
     conv.status = "resolved"
-    conv.resolved_at = datetime.utcnow()
+    conv.resolved_at = utc_now()
     await db.commit()
     return {"status": "resolved"}
 
