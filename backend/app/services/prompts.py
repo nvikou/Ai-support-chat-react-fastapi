@@ -31,12 +31,11 @@ def build_system_prompt(
     uncertainty_threshold: float | None = None,
 ) -> str:
     """Build the system prompt; threshold always comes from config."""
-    settings = get_settings()
-    threshold = (
-        settings.confidence_uncertainty_threshold
-        if uncertainty_threshold is None
-        else uncertainty_threshold
-    )
+    if uncertainty_threshold is None:
+        settings = get_settings()
+        threshold = settings.confidence_uncertainty_threshold
+    else:
+        threshold = uncertainty_threshold
     return _SYSTEM_PROMPT_TEMPLATE.format(
         uncertainty_threshold=threshold,
     )

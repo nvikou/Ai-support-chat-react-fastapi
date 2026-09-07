@@ -25,6 +25,11 @@ from app.security import (
     verify_password,
 )
 from app.redis_client import get_redis
+from app.services.rate_limit import LOGIN_LIMIT
+from app.services.rate_limit import LOGIN_WINDOW_SECONDS
+from app.services.rate_limit import REGISTER_LIMIT
+from app.services.rate_limit import REGISTER_WINDOW_SECONDS
+from app.services.rate_limit import rate_limit_dependency
 from app.services.ws_tickets import DEFAULT_TTL_SECONDS
 from app.services.ws_tickets import WsTicketStore
 
@@ -76,6 +81,11 @@ async def register(
     body: RegisterRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
+    _: None = rate_limit_dependency(
+        scope="register",
+        limit=REGISTER_LIMIT,
+        window_seconds=REGISTER_WINDOW_SECONDS,
+    ),
 ):
     existing = await db.execute(
         select(User).where(User.email == body.email.lower())
@@ -102,6 +112,11 @@ async def login(
     body: LoginRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
+    _: None = rate_limit_dependency(
+        scope="login",
+        limit=LOGIN_LIMIT,
+        window_seconds=LOGIN_WINDOW_SECONDS,
+    ),
 ):
     result = await db.execute(
         select(User).where(User.email == body.email.lower())

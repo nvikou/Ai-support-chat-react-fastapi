@@ -10,6 +10,10 @@ from app.agent import get_agent
 from app.database import AsyncSessionLocal
 from app.models import Conversation, Message, User
 from app.redis_client import get_redis
+from app.services.rate_limit import RateLimitExceeded
+from app.services.rate_limit import WS_MESSAGE_LIMIT
+from app.services.rate_limit import WS_MESSAGE_WINDOW_SECONDS
+from app.services.rate_limit import enforce_user_rate_limit
 from app.services.ws_errors import build_ws_client_error
 from app.services.ws_tickets import WsTicketStore
 
@@ -116,6 +120,21 @@ async def chat_websocket(
                     conversation.customer_name = data.get("name")
                     conversation.customer_email = data.get("email")
                     await db.commit()
+                    continue
+
+                try:
+                    await enforce_user_rate_limit(
+                        scope="ws",
+                        user_id=user.id,
+                        limit=WS_MESSAGE_LIMIT,
+                        window_seconds=WS_MESSAGE_WINDOW_SECONDS,
+                    )
+                except RateLimitExceeded as exc:
+                    await websocket.send_json({
+                        "type": "error",
+                        "content": "Rate limit exceeded",
+                        "retry_after": exc.retry_after,
+                    })
                     continue
 
                 if not conversation.title:

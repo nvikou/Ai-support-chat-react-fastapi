@@ -10,6 +10,11 @@ from app.agent import get_agent
 from app.services.upload_security import UploadTooLargeError
 from app.services.upload_security import UploadTypeRejectedError
 from app.services.upload_security import save_upload_streaming
+from app.services.rate_limit import UPLOAD_LIMIT
+from app.services.rate_limit import UPLOAD_WINDOW_SECONDS
+from app.services.rate_limit import RateLimitExceeded
+from app.services.rate_limit import enforce_user_rate_limit
+from app.services.rate_limit import http_429
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
@@ -30,8 +35,18 @@ class FAQBatch(BaseModel):
 async def upload_document(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
 ):
+    try:
+        await enforce_user_rate_limit(
+            scope="upload",
+            user_id=admin.id,
+            limit=UPLOAD_LIMIT,
+            window_seconds=UPLOAD_WINDOW_SECONDS,
+        )
+    except RateLimitExceeded as exc:
+        raise http_429(exc.retry_after) from exc
+
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
 
