@@ -16,12 +16,14 @@ from app.services.confidence import distance_to_similarity
 from app.services.faiss_integrity import FaissIntegrityError
 from app.services.faiss_integrity import verify_index_digest
 from app.services.file_lock import InterprocessFileLock
+from app.services.index_mtime import IndexMtimeWatcher
 from app.services.vector_store import ScoredDocument
 from app.services.vector_store import VectorStoreHealth
 
 logger = logging.getLogger(__name__)
 
 LOCK_NAME = ".index.lock"
+DEFAULT_MTIME_TTL_SECONDS = 3.0
 
 
 class FAISSVectorStore:
@@ -36,12 +38,18 @@ class FAISSVectorStore:
         self,
         embeddings: Embeddings,
         persist_dir: str | Path,
+        *,
+        mtime_ttl_seconds: float = DEFAULT_MTIME_TTL_SECONDS,
     ) -> None:
         self._embeddings = embeddings
         self._persist_dir = Path(persist_dir)
         self._persist_dir.mkdir(parents=True, exist_ok=True)
         self._lock = InterprocessFileLock(
             self._persist_dir / LOCK_NAME
+        )
+        self._mtime = IndexMtimeWatcher(
+            self._persist_dir,
+            ttl_seconds=mtime_ttl_seconds,
         )
         self._store: FAISS | None = None
         self.reload()
@@ -52,6 +60,16 @@ class FAISSVectorStore:
         *,
         k: int = 5,
     ) -> list[ScoredDocument]:
+        # Other workers may have published a newer index on disk.
+        if self._mtime.should_reload():
+            logger.info(
+                "faiss_mtime_reload",
+                extra={
+                    "event": "faiss_mtime_reload",
+                    "path": str(self._persist_dir),
+                },
+            )
+            self.reload()
         store = self._require_store()
         pairs = store.similarity_search_with_score(query, k=k)
         return [
@@ -129,6 +147,7 @@ class FAISSVectorStore:
             store.save_local(str(staging))
             atomic_publish_index(staging, self._persist_dir)
             self._store = store
+            self._mtime.mark_loaded()
             return
 
         try:
@@ -150,3 +169,4 @@ class FAISSVectorStore:
             self._embeddings,
             allow_dangerous_deserialization=True,
         )
+        self._mtime.mark_loaded()
