@@ -165,6 +165,16 @@ class KnowledgeDocument(Base):
         String(64), unique=True
     )
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+    # pending | indexed | failed — set before BackgroundTasks ingest.
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending", index=True
+    )
+    error_message: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    storage_path: Mapped[str | None] = mapped_column(
+        String(512), nullable=True
+    )
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
