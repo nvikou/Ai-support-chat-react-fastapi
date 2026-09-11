@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import logging
 import re
-from pathlib import Path
+from typing import Any
 
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import (
     MarkdownHeaderTextSplitter,
     RecursiveCharacterTextSplitter,
@@ -18,21 +17,21 @@ from langchain_core.messages import SystemMessage
 
 from app.config import get_settings
 from app.exceptions import LLMError
-from app.services.confidence import distance_to_similarity
 from app.services.confidence import safe_compute_confidence
 from app.services.escalation import match_escalation
-from app.services.faiss_integrity import FaissIntegrityError
-from app.services.faiss_integrity import verify_index_digest
-from app.services.faiss_integrity import write_index_digest
+from app.services.faiss_store import FAISSVectorStore
 from app.services.groundedness import GroundednessCache
 from app.services.groundedness import assess_groundedness
 from app.services.llm_client import get_llm_client
 from app.services.prompts import build_system_prompt
+from app.services.vector_store import ScoredDocument
+from app.services.vector_store import VectorStore
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
 FAISS_PATH = "./faiss_db"
+
 
 def split_markdown_text(
     markdown_text: str,
@@ -66,14 +65,35 @@ def _format_history(history: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _chunks_to_store_docs(
+    chunks: list[Document],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "content": chunk.page_content,
+            "metadata": dict(chunk.metadata or {}),
+        }
+        for chunk in chunks
+    ]
+
+
 class SupportAgent:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        vector_store: VectorStore | None = None,
+    ) -> None:
         self.embeddings = OpenAIEmbeddings(
             api_key=settings.openai_api_key,
         )
         self.llm = self._build_llm(settings.openai_model)
         self.llm_client = get_llm_client()
-        self.vectorstore = self._load_or_create_vectorstore()
+        # Production uses FAISSVectorStore (locked atomic writes +
+        # mtime reload). Tests inject InMemoryVectorStore.
+        self.vector_store: VectorStore = (
+            vector_store
+            if vector_store is not None
+            else FAISSVectorStore(self.embeddings, FAISS_PATH)
+        )
         self.fallback_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200,
@@ -87,68 +107,23 @@ class SupportAgent:
             temperature=0.3,
         )
 
-    def _load_or_create_vectorstore(self) -> FAISS:
-        Path(FAISS_PATH).mkdir(parents=True, exist_ok=True)
-        index_file = Path(FAISS_PATH) / "index.faiss"
-        if index_file.exists():
-            # Digest check BEFORE pickle load — fail closed on tamper.
-            try:
-                verify_index_digest(FAISS_PATH)
-            except FaissIntegrityError:
-                logger.exception(
-                    "faiss_integrity_refused_load",
-                    extra={
-                        "event": "faiss_integrity_refused_load",
-                        "path": FAISS_PATH,
-                    },
-                )
-                raise
-            # LangChain still requires this flag to load index.pkl;
-            # integrity is enforced by the digest above. See SECURITY.md.
-            return FAISS.load_local(
-                FAISS_PATH,
-                self.embeddings,
-                allow_dangerous_deserialization=True,
-            )
-        dummy = Document(
-            page_content="VateCon AI Support initialized.",
-            metadata={"source": "system"},
-        )
-        store = FAISS.from_documents([dummy], self.embeddings)
-        store.save_local(FAISS_PATH)
-        write_index_digest(FAISS_PATH)
-        return store
-
-    def _save_vectorstore(self) -> None:
-        self.vectorstore.save_local(FAISS_PATH)
-        write_index_digest(FAISS_PATH)
-
-    def _retrieve_with_scores(
+    def _retrieve(
         self,
         question: str,
         k: int = 5,
-    ) -> tuple[list[Document], list[float]]:
-        pairs = self.vectorstore.similarity_search_with_score(
-            question,
-            k=k,
-        )
-        documents = [doc for doc, _ in pairs]
-        similarities = [
-            distance_to_similarity(score) for _, score in pairs
-        ]
-        return documents, similarities
+    ) -> list[ScoredDocument]:
+        return self.vector_store.search(question, k=k)
 
     async def answer(
         self,
         question: str,
         history: list[dict],
     ) -> dict:
-        documents, retrieval_scores = self._retrieve_with_scores(
-            question,
-        )
+        hits = self._retrieve(question)
+        retrieval_scores = [hit.score for hit in hits]
         context = (
-            "\n\n".join(doc.page_content for doc in documents)
-            if documents
+            "\n\n".join(hit.content for hit in hits)
+            if hits
             else "(no relevant context found)"
         )
         chat_history = _format_history(history)
@@ -189,15 +164,15 @@ class SupportAgent:
 
         answer_text = call.value.strip()
         sources = list({
-            doc.metadata.get("source", "Knowledge Base")
-            for doc in documents
+            str(hit.metadata.get("source", "Knowledge Base"))
+            for hit in hits
         })
 
         try:
             groundedness = await self._score_groundedness(
                 question=question,
                 answer=answer_text,
-                documents=documents,
+                documents=[hit.content for hit in hits],
                 model=call.model,
             )
         except Exception as exc:
@@ -263,7 +238,7 @@ class SupportAgent:
         *,
         question: str,
         answer: str,
-        documents: list[Document],
+        documents: list[str],
         model: str,
     ) -> float:
         llm = self._build_llm(model)
@@ -287,7 +262,7 @@ class SupportAgent:
         return await assess_groundedness(
             question=question,
             answer=answer,
-            documents=[doc.page_content for doc in documents],
+            documents=documents,
             invoke_llm=_invoke,
             cache=self._groundedness_cache,
             enabled=settings.groundedness_enabled,
@@ -325,26 +300,24 @@ class SupportAgent:
                     documents,
                 )
 
-        self.vectorstore.add_documents(chunks)
-        self._save_vectorstore()
-        return len(chunks)
+        return self.vector_store.add_documents(
+            _chunks_to_store_docs(chunks),
+        )
 
     async def add_faq_entries(self, entries: list[dict]) -> int:
         docs = [
-            Document(
-                page_content=(
+            {
+                "content": (
                     f"Q: {e['question']}\nA: {e['answer']}"
                 ),
-                metadata={
+                "metadata": {
                     "source": "FAQ",
                     "category": e.get("category", "general"),
                 },
-            )
+            }
             for e in entries
         ]
-        self.vectorstore.add_documents(docs)
-        self._save_vectorstore()
-        return len(docs)
+        return self.vector_store.add_documents(docs)
 
 
 _agent_instance: SupportAgent | None = None
