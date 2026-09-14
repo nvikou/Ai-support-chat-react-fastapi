@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from app.services.index_mtime import IndexMtimeWatcher
@@ -47,7 +48,13 @@ def test_mtime_reload_triggered_after_ttl(tmp_path: Path) -> None:
         clock=clock,
     )
     watcher.mark_loaded()
+    # Force a distinct mtime — some filesystems keep the same
+    # second-resolution stamp for rapid rewrites in containers.
     _touch_index(tmp_path, b"v2-changed")
+    for name in ("index.faiss", "index.pkl"):
+        path = tmp_path / name
+        stats = path.stat()
+        os.utime(path, (stats.st_atime, stats.st_mtime + 5))
     clock.advance(3.0)
     assert watcher.should_reload() is True
     watcher.mark_loaded()

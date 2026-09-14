@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -27,11 +28,12 @@ DEFAULT_MTIME_TTL_SECONDS = 3.0
 
 
 class FAISSVectorStore:
-    """In-memory FAISS reads; durable writes under an inter-process lock.
+    """In-memory FAISS reads; durable writes under nested locks.
 
-    Concurrent HTTP ingest must not interleave ``add_documents`` and
-    ``save_local``. Staging + ``os.replace`` keeps a crash from leaving
-    a half-written live index.
+    ``threading.RLock`` serializes same-process writers (BackgroundTasks
+    / threads share one store instance). ``InterprocessFileLock`` covers
+    multi-worker hosts. Staging + ``os.replace`` keeps a crash from
+    leaving a half-written live index.
     """
 
     def __init__(
@@ -44,6 +46,7 @@ class FAISSVectorStore:
         self._embeddings = embeddings
         self._persist_dir = Path(persist_dir)
         self._persist_dir.mkdir(parents=True, exist_ok=True)
+        self._thread_lock = threading.RLock()
         self._lock = InterprocessFileLock(
             self._persist_dir / LOCK_NAME
         )
@@ -60,26 +63,27 @@ class FAISSVectorStore:
         *,
         k: int = 5,
     ) -> list[ScoredDocument]:
-        # Other workers may have published a newer index on disk.
-        if self._mtime.should_reload():
-            logger.info(
-                "faiss_mtime_reload",
-                extra={
-                    "event": "faiss_mtime_reload",
-                    "path": str(self._persist_dir),
-                },
-            )
-            self.reload()
-        store = self._require_store()
-        pairs = store.similarity_search_with_score(query, k=k)
-        return [
-            ScoredDocument(
-                content=doc.page_content,
-                metadata=dict(doc.metadata or {}),
-                score=distance_to_similarity(score),
-            )
-            for doc, score in pairs
-        ]
+        with self._thread_lock:
+            # Other workers may have published a newer index on disk.
+            if self._mtime.should_reload():
+                logger.info(
+                    "faiss_mtime_reload",
+                    extra={
+                        "event": "faiss_mtime_reload",
+                        "path": str(self._persist_dir),
+                    },
+                )
+                self._reload_locked()
+            store = self._require_store()
+            pairs = store.similarity_search_with_score(query, k=k)
+            return [
+                ScoredDocument(
+                    content=doc.page_content,
+                    metadata=dict(doc.metadata or {}),
+                    score=distance_to_similarity(score),
+                )
+                for doc, score in pairs
+            ]
 
     def add_documents(
         self,
@@ -94,38 +98,44 @@ class FAISSVectorStore:
             )
             for item in documents
         ]
-        with self._lock:
-            store = self._require_store()
-            store.add_documents(docs)
-            staging = prepare_staging_dir(self._persist_dir)
-            store.save_local(str(staging))
-            atomic_publish_index(staging, self._persist_dir)
-            # Re-bind memory to the published tree.
-            self._load_from_disk()
+        with self._thread_lock:
+            with self._lock:
+                store = self._require_store()
+                store.add_documents(docs)
+                staging = prepare_staging_dir(self._persist_dir)
+                store.save_local(str(staging))
+                atomic_publish_index(staging, self._persist_dir)
+                # Re-bind memory to the published tree.
+                self._load_from_disk()
         return len(docs)
 
     def reload(self) -> None:
+        with self._thread_lock:
+            self._reload_locked()
+
+    def _reload_locked(self) -> None:
         with self._lock:
             self._load_from_disk()
 
     def health(self) -> VectorStoreHealth:
-        ready = self._store is not None
-        count = 0
-        detail = ""
-        if ready and self._store is not None:
-            try:
-                count = int(
-                    self._store.index.ntotal  # type: ignore[attr-defined]
-                )
-            except Exception as exc:
-                detail = str(exc)
-                ready = False
-        return VectorStoreHealth(
-            backend="faiss",
-            document_count=count,
-            ready=ready,
-            detail=detail,
-        )
+        with self._thread_lock:
+            ready = self._store is not None
+            count = 0
+            detail = ""
+            if ready and self._store is not None:
+                try:
+                    count = int(
+                        self._store.index.ntotal  # type: ignore[attr-defined]
+                    )
+                except Exception as exc:
+                    detail = str(exc)
+                    ready = False
+            return VectorStoreHealth(
+                backend="faiss",
+                document_count=count,
+                ready=ready,
+                detail=detail,
+            )
 
     def _require_store(self) -> FAISS:
         if self._store is None:
