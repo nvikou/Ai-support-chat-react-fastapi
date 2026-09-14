@@ -144,8 +144,10 @@ Do **not** add more API replicas that both ingest until step 1 ships.
 
 ## Operational checklist
 
-- Monitor: `VectorStore.health().document_count`, count of
-  `knowledge_documents.status='pending'|'failed'`, API search latency.
+- Probe admin ops: `GET /admin/vector-store` (auth required) for
+  `document_count`, `knowledge.pending|failed|indexed`, approximate
+  search QPS, and `alerts` vs the table above.
+- Keep load-balancer probes on lightweight `GET /health` only.
 - Never expose the FAISS volume to untrusted writers (`SECURITY.md`).
 - After volume restore from backup: confirm `index.sha256` verifies
   before serving traffic.
@@ -153,6 +155,7 @@ Do **not** add more API replicas that both ingest until step 1 ships.
 ## References
 
 - Implementation: commits on `refresh-contributors` introducing
-  Protocol, locked atomic FAISS, mtime TTL, async ingest, agent wiring,
-  Knowledge polling, concurrency tests.
+  Protocol, locked atomic FAISS, mtime TTL, async ingest (files + FAQ),
+  agent wiring, Knowledge polling, concurrency tests, and
+  `vector_metrics` / `/admin/vector-store`.
 - Integrity: `SECURITY.md` (FAISS pickle + digest).
