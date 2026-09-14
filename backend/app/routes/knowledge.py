@@ -1,3 +1,5 @@
+import hashlib
+import json
 import os
 import shutil
 from pathlib import Path
@@ -15,12 +17,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent import get_agent
 from app.config import get_settings
 from app.database import get_db
 from app.deps import require_admin
 from app.models import KnowledgeDocument, User
 from app.services.ingest_jobs import STATUS_PENDING
+from app.services.ingest_jobs import run_faq_ingest
 from app.services.ingest_jobs import run_knowledge_ingest
 from app.services.rate_limit import UPLOAD_LIMIT
 from app.services.rate_limit import UPLOAD_WINDOW_SECONDS
@@ -165,16 +167,70 @@ async def document_status(
     return _doc_payload(doc)
 
 
-@router.post("/faq")
+@router.post(
+    "/faq",
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def add_faq(
     batch: FAQBatch,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    agent = get_agent()
-    count = await agent.add_faq_entries(
-        [e.model_dump() for e in batch.entries]
+    """Schedule FAQ indexing off the request path (same as uploads).
+
+    Embedding + FAISS publish can block for seconds; returning 202 keeps
+    the admin UI responsive and reuses pending→indexed|failed status.
+    """
+    if not batch.entries:
+        raise HTTPException(
+            status_code=400,
+            detail="No FAQ entries provided",
+        )
+
+    payload = [
+        e.model_dump() for e in batch.entries
+    ]
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+    content_hash = hashlib.sha256(
+        raw.encode("utf-8"),
+    ).hexdigest()
+
+    result = await db.execute(
+        select(KnowledgeDocument).where(
+            KnowledgeDocument.content_hash == content_hash
+        )
     )
-    return {"entries_added": count}
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409,
+            detail="Identical FAQ batch already uploaded",
+        )
+
+    PENDING_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    held_path = PENDING_UPLOAD_DIR / f"{content_hash}.faq.json"
+    held_path.write_text(raw, encoding="utf-8")
+
+    doc = KnowledgeDocument(
+        filename=f"faq-batch-{len(payload)}.json",
+        content_hash=content_hash,
+        chunk_count=0,
+        status=STATUS_PENDING,
+        storage_path=str(held_path),
+    )
+    db.add(doc)
+    await db.commit()
+    await db.refresh(doc)
+
+    background_tasks.add_task(run_faq_ingest, doc.id)
+
+    return {
+        "id": doc.id,
+        "filename": doc.filename,
+        "status": doc.status,
+        "entries": len(payload),
+        "message": "FAQ ingest scheduled",
+    }
 
 
 @router.get("/documents")

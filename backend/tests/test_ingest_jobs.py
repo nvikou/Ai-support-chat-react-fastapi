@@ -207,3 +207,42 @@ async def test_parallel_ingest_jobs_keep_independent_status(
     assert ok_doc.chunk_count == 2
     assert bad_doc.status == STATUS_FAILED
     assert "chunker failed" in (bad_doc.error_message or "")
+
+
+@pytest.mark.asyncio
+async def test_faq_ingest_pending_becomes_indexed(
+    db_session,
+) -> None:
+    import json
+
+    from app.services.ingest_jobs import run_faq_ingest
+
+    session, tmp_path = db_session
+    held = tmp_path / "faq.json"
+    entries = [
+        {
+            "question": "Hours?",
+            "answer": "9-5",
+            "category": "general",
+        }
+    ]
+    held.write_text(
+        json.dumps(entries),
+        encoding="utf-8",
+    )
+    doc = await _pending_doc(
+        session,
+        filename="faq-batch-1.json",
+        content_hash="faqhash",
+        storage_path=str(held),
+    )
+
+    async def fake_faq(items: list) -> int:
+        assert items[0]["question"] == "Hours?"
+        return len(items)
+
+    await run_faq_ingest(doc.id, ingest_fn=fake_faq)
+    await session.refresh(doc)
+    assert doc.status == STATUS_INDEXED
+    assert doc.chunk_count == 1
+    assert not held.exists()

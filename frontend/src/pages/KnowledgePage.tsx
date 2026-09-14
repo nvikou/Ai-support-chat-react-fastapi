@@ -130,11 +130,22 @@ export default function KnowledgePage() {
       method: 'POST',
       body: JSON.stringify({ entries: valid }),
     })
-    const data = await res.json()
-    setFaqStatus(
-      `✓ ${data.entries_added} FAQ entries added to knowledge base`,
-    )
-    setFaqEntries([{ question: '', answer: '', category: 'general' }])
+    const data = await res.json().catch(() => ({}))
+    if (res.status === 202 || res.ok) {
+      setFaqStatus(
+        'FAQ accepted — indexing in the background…',
+      )
+      setFaqEntries([
+        { question: '', answer: '', category: 'general' },
+      ])
+      await refresh()
+    } else {
+      const detail =
+        typeof data.detail === 'string'
+          ? data.detail
+          : 'FAQ save failed'
+      setFaqStatus(detail)
+    }
   }
 
   return (
