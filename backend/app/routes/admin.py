@@ -3,9 +3,17 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.agent import get_agent
 from app.database import get_db
 from app.deps import require_admin
-from app.models import Conversation, Message, User
+from app.models import Conversation, KnowledgeDocument, Message, User
+from app.services.ingest_jobs import STATUS_FAILED
+from app.services.ingest_jobs import STATUS_INDEXED
+from app.services.ingest_jobs import STATUS_PENDING
+from app.services.vector_metrics import ADR_CHUNKS_WARN
+from app.services.vector_metrics import ADR_PENDING_BACKLOG_WARN
+from app.services.vector_metrics import ADR_SEARCH_QPS_WARN
+from app.services.vector_metrics import get_vector_metrics
 from app.timeutils import utc_now
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -50,6 +58,72 @@ async def get_stats(
         "today": today_count,
         "ai_resolution_rate": resolution_rate,
         "total_users": user_count,
+    }
+
+
+@router.get("/vector-store")
+async def vector_store_ops(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Ops snapshot aligned with ADR 0001 migration thresholds.
+
+    Liveness stays on ``GET /health``. This endpoint is admin-only so
+    we can expose counts/QPS without opening internals to the internet.
+    """
+    store_health = get_agent().vector_store.health()
+    search = get_vector_metrics().snapshot()
+
+    async def _count(status_value: str) -> int:
+        value = await db.scalar(
+            select(func.count())
+            .select_from(KnowledgeDocument)
+            .where(KnowledgeDocument.status == status_value)
+        )
+        return int(value or 0)
+
+    pending = await _count(STATUS_PENDING)
+    failed = await _count(STATUS_FAILED)
+    indexed = await _count(STATUS_INDEXED)
+
+    alerts: list[str] = []
+    if store_health.document_count > ADR_CHUNKS_WARN:
+        alerts.append(
+            f"chunks>{ADR_CHUNKS_WARN} "
+            f"(have {store_health.document_count})"
+        )
+    if search.qps_approx > ADR_SEARCH_QPS_WARN:
+        alerts.append(
+            f"search_qps>{ADR_SEARCH_QPS_WARN} "
+            f"(have {search.qps_approx})"
+        )
+    if pending > ADR_PENDING_BACKLOG_WARN:
+        alerts.append(
+            f"pending>{ADR_PENDING_BACKLOG_WARN} "
+            f"(have {pending})"
+        )
+
+    return {
+        "backend": store_health.backend,
+        "ready": store_health.ready,
+        "detail": store_health.detail,
+        "document_count": store_health.document_count,
+        "knowledge": {
+            "pending": pending,
+            "failed": failed,
+            "indexed": indexed,
+        },
+        "search": {
+            "total": search.total,
+            "qps_approx": search.qps_approx,
+            "window_seconds": search.window_seconds,
+        },
+        "thresholds": {
+            "chunks_warn": ADR_CHUNKS_WARN,
+            "search_qps_warn": ADR_SEARCH_QPS_WARN,
+            "pending_backlog_warn": ADR_PENDING_BACKLOG_WARN,
+        },
+        "alerts": alerts,
     }
 
 

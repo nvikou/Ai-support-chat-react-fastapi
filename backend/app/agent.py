@@ -24,6 +24,7 @@ from app.services.groundedness import GroundednessCache
 from app.services.groundedness import assess_groundedness
 from app.services.llm_client import get_llm_client
 from app.services.prompts import build_system_prompt
+from app.services.vector_metrics import get_vector_metrics
 from app.services.vector_store import ScoredDocument
 from app.services.vector_store import VectorStore
 
@@ -112,7 +113,9 @@ class SupportAgent:
         question: str,
         k: int = 5,
     ) -> list[ScoredDocument]:
-        return self.vector_store.search(question, k=k)
+        hits = self.vector_store.search(question, k=k)
+        get_vector_metrics().record_search()
+        return hits
 
     async def answer(
         self,
