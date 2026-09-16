@@ -1,0 +1,139 @@
+[project]
+name = "vatecon-backend"
+version = "1.0.0"
+description = "VateCon AI support agent API"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+# Runtime deps stay in requirements.txt so Docker can
+# ``pip install -r requirements.txt`` without building a package.
+# Dev/test/lint tools live here so production images stay lean.
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.3",
+    "pytest-asyncio==0.24.0",
+    "pytest-cov==6.0.0",
+    "aiosqlite==0.20.0",
+    "fakeredis[lua]==2.26.2",
+    "httpx==0.27.2",
+    "ruff==0.8.6",
+    "mypy==1.13.0",
+    "types-PyYAML==6.0.12.20240917",
+    "types-python-jose==3.3.4.20240106",
+]
+
+[build-system]
+requires = ["setuptools>=75.0.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+pythonpath = ["."]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+# Coverage gate starts at 60%; raise as suites grow (PROMPT tooling).
+addopts = [
+    "--cov=app",
+    "--cov-report=term-missing",
+    "--cov-fail-under=60",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+omit = [
+    # Alembic-style one-shot SQL only; not runtime logic worth % games.
+    "app/migrate.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
+# ---------------------------------------------------------------------------
+# Ruff — lint + format (line length matches project PEP 8)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py311"
+line-length = 79
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "F",     # pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "B",     # bugbear
+    "S",     # bandit (security)
+    "ASYNC", # async anti-patterns
+    "T20",   # no print() — use logging
+]
+ignore = [
+    # FastAPI / Pydantic often use `id` / `type` field names.
+    "N815",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Asserts and test secrets are intentional in the suite.
+"tests/**" = ["S101", "S105", "S106"]
+# Settings defaults are overridden / rejected in production.
+"app/config.py" = ["S105", "S106"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+# ---------------------------------------------------------------------------
+# Mypy — strict on app/ only
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["app"]
+warn_unreachable = true
+warn_unused_ignores = true
+show_error_codes = true
+pretty = true
+# Tests stay out of the strict gate until fixtures are fully typed
+# (commit: conftest / unit reorg). Running mypy on tests/ here would
+# drown signal in fixture noise.
+exclude = ["(?x)(^tests/)"]
+
+[[tool.mypy.overrides]]
+# No complete stub packages upstream; ignore_missing keeps strict
+# checking of *our* code without blocking on LangChain/FAISS/Redis.
+module = [
+    "langchain.*",
+    "langchain_community.*",
+    "langchain_openai.*",
+    "langchain_core.*",
+    "langchain_text_splitters.*",
+    "faiss.*",
+    "redis.*",
+    "fakeredis.*",
+    "msvcrt",
+]
+ignore_missing_imports = true
