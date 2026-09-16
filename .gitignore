@@ -20,6 +20,10 @@ venv/
 uploads/
 faiss_db/
 
+# Jupyter — drafts anywhere; keep intentional work under notebooks/
+*.ipynb
+!notebooks/**/*.ipynb
+
 # Node / frontend
 frontend/node_modules/
 frontend/dist/

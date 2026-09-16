@@ -3,7 +3,6 @@ import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent import get_agent
 from app.database import AsyncSessionLocal
