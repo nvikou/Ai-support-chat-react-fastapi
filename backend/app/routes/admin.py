@@ -3,7 +3,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.agent import get_agent
+from app.agent_access import get_agent
 from app.database import get_db
 from app.deps import require_admin
 from app.models import Conversation, KnowledgeDocument, Message, User

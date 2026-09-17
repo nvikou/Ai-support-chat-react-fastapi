@@ -4,7 +4,7 @@ import uuid
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy import select
 
-from app.agent import get_agent
+from app.agent_access import get_agent
 from app.database import AsyncSessionLocal
 from app.models import Conversation, Message, User
 from app.redis_client import get_redis

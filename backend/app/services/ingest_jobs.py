@@ -34,7 +34,7 @@ FaqIngestFn = Callable[[list[dict[str, Any]]], Awaitable[int]]
 
 
 async def _default_ingest(file_path: str, filename: str) -> int:
-    from app.agent import get_agent
+    from app.agent_access import get_agent
 
     return await get_agent().ingest_document(file_path, filename)
 
@@ -42,7 +42,7 @@ async def _default_ingest(file_path: str, filename: str) -> int:
 async def _default_faq_ingest(
     entries: list[dict[str, Any]],
 ) -> int:
-    from app.agent import get_agent
+    from app.agent_access import get_agent
 
     return await get_agent().add_faq_entries(entries)
 
