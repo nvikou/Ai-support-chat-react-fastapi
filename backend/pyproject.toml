@@ -43,6 +43,9 @@ testpaths = ["tests"]
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
+markers = [
+    "evaluation: RAG golden-set / retrieval quality checks",
+]
 # Coverage gate starts at 60%; raise as suites grow (PROMPT tooling).
 addopts = [
     "--cov=app",

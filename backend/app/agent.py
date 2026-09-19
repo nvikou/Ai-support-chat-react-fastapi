@@ -3,20 +3,17 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any
 
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain.text_splitter import (
-    MarkdownHeaderTextSplitter,
-    RecursiveCharacterTextSplitter,
-)
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain.schema import Document
 from langchain_core.messages import SystemMessage
 
 from app.config import get_settings
 from app.exceptions import LLMError
+from app.services.chunking import split_markdown_text
 from app.services.confidence import safe_compute_confidence
 from app.services.escalation import match_escalation
 from app.services.faiss_store import FAISSVectorStore
@@ -32,28 +29,6 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 FAISS_PATH = "./faiss_db"
-
-
-def split_markdown_text(
-    markdown_text: str,
-    strip_headers: bool = False,
-) -> list[Document]:
-    """Découpe un texte Markdown en chunks en suivant les titres."""
-    markdown_text = re.sub(
-        r" {1,}",
-        " ",
-        re.sub(r"\n\s*\n", "\n", markdown_text),
-    )
-    headers_to_split_on = [
-        ("#", "Header 1"),
-        ("##", "Header 2"),
-        ("###", "Header 3"),
-    ]
-    markdown_splitter = MarkdownHeaderTextSplitter(
-        headers_to_split_on=headers_to_split_on,
-        strip_headers=strip_headers,
-    )
-    return markdown_splitter.split_text(markdown_text)
 
 
 def _format_history(history: list[dict]) -> str:

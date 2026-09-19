@@ -276,7 +276,7 @@ def test_groundedness_cache_by_hashes() -> None:
 
 def test_escalation_pattern_reports_category() -> None:
     path = (
-        Path(__file__).resolve().parents[1]
+        Path(__file__).resolve().parents[2]
         / "app"
         / "data"
         / "escalation_patterns.yaml"
@@ -290,7 +290,7 @@ def test_escalation_pattern_reports_category() -> None:
 
 def test_escalation_french_explicit_request() -> None:
     path = (
-        Path(__file__).resolve().parents[1]
+        Path(__file__).resolve().parents[2]
         / "app"
         / "data"
         / "escalation_patterns.yaml"
