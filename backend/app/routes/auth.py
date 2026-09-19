@@ -1,3 +1,5 @@
+from datetime import timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -155,7 +157,11 @@ async def refresh_token(
         )
     )
     stored = result.scalar_one_or_none()
-    if not stored or stored.expires_at < utc_now():
+    expires_at = stored.expires_at if stored else None
+    # SQLite may strip tzinfo; compare in UTC either way.
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if not stored or expires_at is None or expires_at < utc_now():
         _clear_refresh_cookie(response)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

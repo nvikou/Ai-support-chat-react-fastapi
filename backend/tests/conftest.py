@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from collections.abc import AsyncIterator
 
+import fakeredis
 import fakeredis.aioredis
 import pytest
 import pytest_asyncio
@@ -64,9 +65,20 @@ def offline_agent(
     return OfflineAgent(vector_store=fake_vector_store)
 
 
+@pytest.fixture
+def fake_redis_server() -> fakeredis.FakeServer:
+    """Shared FakeServer so async HTTP and sync TestClient see one Redis."""
+    return fakeredis.FakeServer()
+
+
 @pytest_asyncio.fixture
-async def fake_redis() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
-    client = fakeredis.aioredis.FakeRedis(decode_responses=True)
+async def fake_redis(
+    fake_redis_server: fakeredis.FakeServer,
+) -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
+    client = fakeredis.aioredis.FakeRedis(
+        server=fake_redis_server,
+        decode_responses=True,
+    )
     try:
         yield client
     finally:
@@ -104,7 +116,7 @@ async def db_session(db_engine) -> AsyncIterator[AsyncSession]:
 @pytest_asyncio.fixture
 async def app(
     db_engine,
-    fake_redis,
+    fake_redis_server: fakeredis.FakeServer,
     offline_agent: OfflineAgent,
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -122,7 +134,12 @@ async def app(
             yield session
 
     async def _get_redis():
-        return fake_redis
+        # New client per call: TestClient runs WS on another loop;
+        # FakeServer keeps ticket state shared across clients.
+        return fakeredis.aioredis.FakeRedis(
+            server=fake_redis_server,
+            decode_responses=True,
+        )
 
     async def _noop_init_db() -> None:
         # Lifespan must not open the process-global engine / Postgres.
