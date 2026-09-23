@@ -42,7 +42,9 @@ function ConfidenceBadge({ score }: { score: number }) {
         ? 'text-yellow-600 bg-yellow-50'
         : 'text-red-600 bg-red-50'
   return (
-    <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full', color)}>
+    <span
+      className={clsx('text-xs font-medium px-2 py-0.5 rounded-full', color)}
+    >
       {pct}% confidence
     </span>
   )
@@ -214,7 +216,9 @@ export default function ChatPage() {
   }, [])
 
   useEffect(() => {
-    document.getElementById('chat-bottom')?.scrollIntoView({ behavior: 'smooth' })
+    document
+      .getElementById('chat-bottom')
+      ?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isTyping])
 
   const handleSend = () => {
@@ -225,10 +229,9 @@ export default function ChatPage() {
   }
 
   const startNewChat = async () => {
-    const data = await apiJson<{ session_id: string }>(
-      '/me/conversations',
-      { method: 'POST' },
-    )
+    const data = await apiJson<{ session_id: string }>('/me/conversations', {
+      method: 'POST',
+    })
     setSearchParams({ session: data.session_id })
     await loadConversations()
   }
@@ -286,8 +289,7 @@ export default function ChatPage() {
                   className={clsx('text-xs px-1.5 py-0.5 rounded-full', {
                     'bg-emerald-100 text-emerald-700':
                       conv.status === 'resolved',
-                    'bg-amber-100 text-amber-700':
-                      conv.status === 'escalated',
+                    'bg-amber-100 text-amber-700': conv.status === 'escalated',
                     'bg-blue-100 text-blue-700': conv.status === 'active',
                   })}
                 >
@@ -320,7 +322,9 @@ export default function ChatPage() {
             ) : (
               <>
                 <WifiOff className="w-4 h-4 text-red-400" />
-                <span className="text-sm text-red-500 capitalize">{status}</span>
+                <span className="text-sm text-red-500 capitalize">
+                  {status}
+                </span>
               </>
             )}
           </div>

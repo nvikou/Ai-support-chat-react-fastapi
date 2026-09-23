@@ -29,7 +29,7 @@ function DocRow({ doc }: { doc: KnowledgeDocument }) {
     doc.status === 'pending'
       ? 'Queued for indexing'
       : doc.status === 'failed'
-        ? (doc.error_message || 'Ingest failed')
+        ? doc.error_message || 'Ingest failed'
         : `${doc.chunk_count} chunks · ${new Date(doc.uploaded_at).toLocaleDateString()}`
 
   return (
@@ -61,8 +61,7 @@ function DocRow({ doc }: { doc: KnowledgeDocument }) {
 }
 
 export default function KnowledgePage() {
-  const { docs, loading, error, refresh, pending } =
-    useKnowledgeDocuments()
+  const { docs, loading, error, refresh, pending } = useKnowledgeDocuments()
   const [uploading, setUploading] = useState(false)
   const [uploadMessage, setUploadMessage] = useState('')
   const [faqEntries, setFaqEntries] = useState<FAQEntry[]>([
@@ -71,9 +70,7 @@ export default function KnowledgePage() {
   const [faqStatus, setFaqStatus] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const handleUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setUploading(true)
@@ -87,15 +84,11 @@ export default function KnowledgePage() {
       })
       const body = await res.json().catch(() => ({}))
       if (res.status === 202 || res.ok) {
-        setUploadMessage(
-          'Upload accepted — indexing in the background…',
-        )
+        setUploadMessage('Upload accepted — indexing in the background…')
         await refresh()
       } else {
         const detail =
-          typeof body.detail === 'string'
-            ? body.detail
-            : 'Upload failed'
+          typeof body.detail === 'string' ? body.detail : 'Upload failed'
         setUploadMessage(detail)
       }
     } catch {
@@ -113,11 +106,7 @@ export default function KnowledgePage() {
     ])
   const removeFaqRow = (i: number) =>
     setFaqEntries((p) => p.filter((_, idx) => idx !== i))
-  const updateFaq = (
-    i: number,
-    field: keyof FAQEntry,
-    value: string,
-  ) => {
+  const updateFaq = (i: number, field: keyof FAQEntry, value: string) => {
     setFaqEntries((p) =>
       p.map((e, idx) => (idx === i ? { ...e, [field]: value } : e)),
     )
@@ -132,18 +121,12 @@ export default function KnowledgePage() {
     })
     const data = await res.json().catch(() => ({}))
     if (res.status === 202 || res.ok) {
-      setFaqStatus(
-        'FAQ accepted — indexing in the background…',
-      )
-      setFaqEntries([
-        { question: '', answer: '', category: 'general' },
-      ])
+      setFaqStatus('FAQ accepted — indexing in the background…')
+      setFaqEntries([{ question: '', answer: '', category: 'general' }])
       await refresh()
     } else {
       const detail =
-        typeof data.detail === 'string'
-          ? data.detail
-          : 'FAQ save failed'
+        typeof data.detail === 'string' ? data.detail : 'FAQ save failed'
       setFaqStatus(detail)
     }
   }
@@ -155,8 +138,8 @@ export default function KnowledgePage() {
       <div className="card space-y-4">
         <h2 className="font-semibold text-gray-900">Upload Documents</h2>
         <p className="text-sm text-gray-500">
-          Upload PDF, text or MD files. Ingest runs in the background;
-          this page refreshes every 2s while indexing is pending.
+          Upload PDF, text or MD files. Ingest runs in the background; this page
+          refreshes every 2s while indexing is pending.
         </p>
         <div
           onClick={() => fileRef.current?.click()}
@@ -164,9 +147,7 @@ export default function KnowledgePage() {
         >
           <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
           <p className="text-sm text-gray-500">
-            {uploading
-              ? 'Uploading…'
-              : 'Click to upload PDF, TXT or MD file'}
+            {uploading ? 'Uploading…' : 'Click to upload PDF, TXT or MD file'}
           </p>
           <input
             ref={fileRef}
@@ -180,9 +161,7 @@ export default function KnowledgePage() {
         {uploadMessage && (
           <p className="text-sm text-brand-700">{uploadMessage}</p>
         )}
-        {error && (
-          <p className="text-sm text-red-600">{error}</p>
-        )}
+        {error && <p className="text-sm text-red-600">{error}</p>}
         {pending && (
           <p className="text-xs text-amber-700 flex items-center gap-1.5">
             <Loader2 className="w-3 h-3 animate-spin" />
@@ -228,25 +207,19 @@ export default function KnowledgePage() {
               <input
                 placeholder="Question"
                 value={entry.question}
-                onChange={(e) =>
-                  updateFaq(i, 'question', e.target.value)
-                }
+                onChange={(e) => updateFaq(i, 'question', e.target.value)}
                 className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
               <input
                 placeholder="Answer"
                 value={entry.answer}
-                onChange={(e) =>
-                  updateFaq(i, 'answer', e.target.value)
-                }
+                onChange={(e) => updateFaq(i, 'answer', e.target.value)}
                 className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
               <input
                 placeholder="Category"
                 value={entry.category}
-                onChange={(e) =>
-                  updateFaq(i, 'category', e.target.value)
-                }
+                onChange={(e) => updateFaq(i, 'category', e.target.value)}
                 className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 w-28"
               />
               <button

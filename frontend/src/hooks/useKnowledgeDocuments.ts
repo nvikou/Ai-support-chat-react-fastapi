@@ -15,9 +15,7 @@ export type KnowledgeDocument = {
   uploaded_at: string
 }
 
-export function hasPendingIngest(
-  docs: KnowledgeDocument[],
-): boolean {
+export function hasPendingIngest(docs: KnowledgeDocument[]): boolean {
   return docs.some((doc) => doc.status === 'pending')
 }
 
@@ -48,15 +46,11 @@ export function useKnowledgeDocuments(options: Options = {}) {
     }
   }, [])
 
-  const refresh = useCallback(async (): Promise<
-    KnowledgeDocument[] | null
-  > => {
+  const refresh = useCallback(async (): Promise<KnowledgeDocument[] | null> => {
     if (inFlightRef.current) return null
     inFlightRef.current = true
     try {
-      const data = await apiJson<KnowledgeDocument[]>(
-        '/knowledge/documents',
-      )
+      const data = await apiJson<KnowledgeDocument[]>('/knowledge/documents')
       if (mountedRef.current) {
         setDocs(data)
         setError(null)
@@ -97,10 +91,7 @@ export function useKnowledgeDocuments(options: Options = {}) {
 
     return () => {
       window.clearInterval(id)
-      document.removeEventListener(
-        'visibilitychange',
-        onVisibility,
-      )
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [pending, pollIntervalMs, refresh])
 

@@ -1,11 +1,5 @@
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
-import {
-  Bot,
-  LayoutDashboard,
-  BookOpen,
-  History,
-  Users,
-} from 'lucide-react'
+import { Bot, LayoutDashboard, BookOpen, History, Users } from 'lucide-react'
 import ChatPage from './pages/ChatPage'
 import AdminPage from './pages/AdminPage'
 import KnowledgePage from './pages/KnowledgePage'
@@ -154,7 +148,10 @@ export default function App() {
 
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage />} />
+      <Route
+        path="/login"
+        element={user ? <Navigate to="/" /> : <LoginPage />}
+      />
       <Route
         path="/register"
         element={user ? <Navigate to="/" /> : <RegisterPage />}

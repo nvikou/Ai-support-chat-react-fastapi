@@ -94,9 +94,7 @@ export default function HistoryPage() {
             return (
               <button
                 key={conv.id}
-                onClick={() =>
-                  navigate(`/?session=${conv.session_id}`)
-                }
+                onClick={() => navigate(`/?session=${conv.session_id}`)}
                 className="card w-full flex items-center gap-4 hover:border-brand-200 hover:shadow-md transition-all text-left p-4"
               >
                 <div
