@@ -110,15 +110,15 @@ async def chat_websocket(
         try:
             while True:
                 data = await websocket.receive_json()
-                user_message = data.get("message", "").strip()
-
-                if not user_message:
-                    continue
-
+                # Control frames first — identify has no ``message``.
                 if data.get("type") == "identify":
                     conversation.customer_name = data.get("name")
                     conversation.customer_email = data.get("email")
                     await db.commit()
+                    continue
+
+                user_message = data.get("message", "").strip()
+                if not user_message:
                     continue
 
                 try:
