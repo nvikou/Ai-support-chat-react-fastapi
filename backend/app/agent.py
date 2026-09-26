@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from pathlib import Path
 from typing import Any
 
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
-from langchain.schema import Document
 from langchain_core.messages import SystemMessage
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from app.config import get_settings
 from app.exceptions import LLMError
@@ -17,13 +19,11 @@ from app.services.chunking import split_markdown_text
 from app.services.confidence import safe_compute_confidence
 from app.services.escalation import match_escalation
 from app.services.faiss_store import FAISSVectorStore
-from app.services.groundedness import GroundednessCache
-from app.services.groundedness import assess_groundedness
+from app.services.groundedness import GroundednessCache, assess_groundedness
 from app.services.llm_client import get_llm_client
 from app.services.prompts import build_system_prompt
 from app.services.vector_metrics import get_vector_metrics
-from app.services.vector_store import ScoredDocument
-from app.services.vector_store import VectorStore
+from app.services.vector_store import ScoredDocument, VectorStore
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 FAISS_PATH = "./faiss_db"
 
 
-def _format_history(history: list[dict]) -> str:
+def _format_history(history: list[dict[str, Any]]) -> str:
     if not history:
         return "(none)"
     lines: list[str] = []
@@ -95,8 +95,8 @@ class SupportAgent:
     async def answer(
         self,
         question: str,
-        history: list[dict],
-    ) -> dict:
+        history: list[dict[str, Any]],
+    ) -> dict[str, Any]:
         hits = self._retrieve(question)
         retrieval_scores = [hit.score for hit in hits]
         context = (
@@ -115,9 +115,7 @@ class SupportAgent:
 
         async def _operation(model: str) -> str:
             llm = self._build_llm(model)
-            response = await llm.ainvoke(
-                [SystemMessage(content=prompt_body)]
-            )
+            response = await llm.ainvoke([SystemMessage(content=prompt_body)])
             content = response.content
             if isinstance(content, list):
                 return "".join(str(part) for part in content)
@@ -141,10 +139,9 @@ class SupportAgent:
             }
 
         answer_text = call.value.strip()
-        sources = list({
-            str(hit.metadata.get("source", "Knowledge Base"))
-            for hit in hits
-        })
+        sources = list(
+            {str(hit.metadata.get("source", "Knowledge Base")) for hit in hits}
+        )
 
         try:
             groundedness = await self._score_groundedness(
@@ -169,21 +166,14 @@ class SupportAgent:
             groundedness,
             len(answer_text),
             bool(sources),
-            retrieval_min_similarity=(
-                settings.retrieval_min_similarity
-            ),
-            escalation_threshold=(
-                settings.confidence_escalation_threshold
-            ),
-            uncertainty_threshold=(
-                settings.confidence_uncertainty_threshold
-            ),
+            retrieval_min_similarity=(settings.retrieval_min_similarity),
+            escalation_threshold=(settings.confidence_escalation_threshold),
+            uncertainty_threshold=(settings.confidence_uncertainty_threshold),
         )
 
         pattern_match = match_escalation(question)
         should_escalate = (
-            confidence.score
-            < settings.confidence_escalation_threshold
+            confidence.score < settings.confidence_escalation_threshold
             or pattern_match is not None
             or call.degraded
         )
@@ -221,7 +211,7 @@ class SupportAgent:
     ) -> float:
         llm = self._build_llm(model)
 
-        async def _invoke(messages: list) -> str:
+        async def _invoke(messages: list[Any]) -> str:
             async def _op(_model: str) -> str:
                 response = await llm.ainvoke(messages)
                 content = response.content
@@ -258,13 +248,11 @@ class SupportAgent:
                 doc.metadata["source"] = filename
             chunks = self.fallback_splitter.split_documents(documents)
         else:
-            with open(
-                file_path,
-                "r",
+            content = await asyncio.to_thread(
+                Path(file_path).read_text,
                 encoding="utf-8",
                 errors="ignore",
-            ) as handle:
-                content = handle.read()
+            )
             chunks = split_markdown_text(content, strip_headers=False)
             for chunk in chunks:
                 chunk.metadata["source"] = filename
@@ -282,12 +270,10 @@ class SupportAgent:
             _chunks_to_store_docs(chunks),
         )
 
-    async def add_faq_entries(self, entries: list[dict]) -> int:
+    async def add_faq_entries(self, entries: list[dict[str, Any]]) -> int:
         docs = [
             {
-                "content": (
-                    f"Q: {e['question']}\nA: {e['answer']}"
-                ),
+                "content": (f"Q: {e['question']}\nA: {e['answer']}"),
                 "metadata": {
                     "source": "FAQ",
                     "category": e.get("category", "general"),

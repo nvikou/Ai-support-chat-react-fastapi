@@ -6,6 +6,7 @@ import logging
 import sys
 from pathlib import Path
 from types import TracebackType
+from typing import BinaryIO
 
 logger = logging.getLogger(__name__)
 
@@ -19,21 +20,22 @@ class InterprocessFileLock:
 
     def __init__(self, path: str | Path) -> None:
         self._path = Path(path)
-        self._handle = None
+        self._handle: BinaryIO | None = None
 
     def acquire(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._handle = open(self._path, "a+b")
-        if self._handle.tell() == 0:
-            self._handle.write(b"\0")
-            self._handle.flush()
-        self._handle.seek(0)
+        handle = open(self._path, "a+b")
+        self._handle = handle
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+        handle.seek(0)
         if sys.platform == "win32":
             import msvcrt
 
             # Lock one byte; blocks until available.
             msvcrt.locking(
-                self._handle.fileno(),
+                handle.fileno(),
                 msvcrt.LK_LOCK,
                 1,
             )
@@ -41,7 +43,7 @@ class InterprocessFileLock:
             import fcntl
 
             fcntl.flock(
-                self._handle.fileno(),
+                handle.fileno(),
                 fcntl.LOCK_EX,
             )
         logger.debug(
@@ -53,15 +55,16 @@ class InterprocessFileLock:
         )
 
     def release(self) -> None:
-        if self._handle is None:
+        handle = self._handle
+        if handle is None:
             return
         try:
-            self._handle.seek(0)
+            handle.seek(0)
             if sys.platform == "win32":
                 import msvcrt
 
                 msvcrt.locking(
-                    self._handle.fileno(),
+                    handle.fileno(),
                     msvcrt.LK_UNLCK,
                     1,
                 )
@@ -69,11 +72,11 @@ class InterprocessFileLock:
                 import fcntl
 
                 fcntl.flock(
-                    self._handle.fileno(),
+                    handle.fileno(),
                     fcntl.LOCK_UN,
                 )
         finally:
-            self._handle.close()
+            handle.close()
             self._handle = None
             logger.debug(
                 "index_lock_released",
@@ -83,7 +86,7 @@ class InterprocessFileLock:
                 },
             )
 
-    def __enter__(self) -> "InterprocessFileLock":
+    def __enter__(self) -> InterprocessFileLock:
         self.acquire()
         return self
 

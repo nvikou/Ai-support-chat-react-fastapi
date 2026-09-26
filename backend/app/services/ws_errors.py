@@ -31,9 +31,6 @@ def build_ws_client_error(
     )
     return {
         "type": "error",
-        "content": (
-            "An unexpected error occurred. "
-            f"Reference: {cid}"
-        ),
+        "content": ("An unexpected error occurred. " f"Reference: {cid}"),
         "correlation_id": cid,
     }

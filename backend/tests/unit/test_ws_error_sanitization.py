@@ -14,10 +14,8 @@ import pytest
 
 from app.services.ws_errors import build_ws_client_error
 
-
 UUID_RE = re.compile(
-    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
-    r"[0-9a-f]{4}-[0-9a-f]{12}",
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-" r"[0-9a-f]{4}-[0-9a-f]{12}",
     re.I,
 )
 
@@ -36,10 +34,7 @@ def test_client_error_hides_internal_exception(
     assert UUID_RE.search(payload["content"])
     assert payload["correlation_id"] in payload["content"]
     uuid.UUID(payload["correlation_id"])
-    assert any(
-        "ws_handler_error" in r.getMessage()
-        for r in caplog.records
-    )
+    assert any("ws_handler_error" in r.getMessage() for r in caplog.records)
 
 
 def test_client_error_uses_provided_correlation_id() -> None:

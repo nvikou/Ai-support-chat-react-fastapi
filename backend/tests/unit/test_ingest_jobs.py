@@ -10,13 +10,14 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.models import Base
-from app.models import KnowledgeDocument
+from app.models import Base, KnowledgeDocument
 from app.services import ingest_jobs
-from app.services.ingest_jobs import STATUS_FAILED
-from app.services.ingest_jobs import STATUS_INDEXED
-from app.services.ingest_jobs import STATUS_PENDING
-from app.services.ingest_jobs import run_knowledge_ingest
+from app.services.ingest_jobs import (
+    STATUS_FAILED,
+    STATUS_INDEXED,
+    STATUS_PENDING,
+    run_knowledge_ingest,
+)
 
 
 @pytest.fixture

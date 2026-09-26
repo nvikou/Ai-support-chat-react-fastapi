@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from app.services.vector_store import InMemoryVectorStore
-from app.services.vector_store import VectorStore
+from app.services.vector_store import InMemoryVectorStore, VectorStore
 
 
 def test_inmemory_is_vector_store() -> None:
@@ -38,9 +37,7 @@ def test_inmemory_add_and_search() -> None:
 
 def test_inmemory_reload_is_noop_but_callable() -> None:
     store = InMemoryVectorStore()
-    store.add_documents(
-        [{"content": "hello world", "metadata": {}}]
-    )
+    store.add_documents([{"content": "hello world", "metadata": {}}])
     before = store.health().document_count
     store.reload()
     assert store.health().document_count == before

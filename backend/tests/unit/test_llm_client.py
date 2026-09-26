@@ -3,17 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
-from dataclasses import field
+from dataclasses import dataclass, field
 
 import pytest
 
-from app.exceptions import CircuitOpen
-from app.exceptions import LLMError
-from app.exceptions import LLMRateLimited
-from app.exceptions import LLMTimeout
-from app.services.llm_client import InMemoryCircuitBreaker
-from app.services.llm_client import LLMClient
+from app.exceptions import CircuitOpen, LLMError, LLMRateLimited, LLMTimeout
+from app.services.llm_client import InMemoryCircuitBreaker, LLMClient
 
 
 @dataclass
@@ -117,7 +112,7 @@ async def test_no_retry_on_400() -> None:
     assert sleep.delays == []
     assert not isinstance(
         exc_info.value,
-        (LLMTimeout, LLMRateLimited),
+        LLMTimeout | LLMRateLimited,
     )
 
 

@@ -13,12 +13,12 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Awaitable
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal
 from app.models import KnowledgeDocument
@@ -36,7 +36,7 @@ FaqIngestFn = Callable[[list[dict[str, Any]]], Awaitable[int]]
 async def _default_ingest(file_path: str, filename: str) -> int:
     from app.agent_access import get_agent
 
-    return await get_agent().ingest_document(file_path, filename)
+    return cast(int, await get_agent().ingest_document(file_path, filename))
 
 
 async def _default_faq_ingest(
@@ -44,17 +44,15 @@ async def _default_faq_ingest(
 ) -> int:
     from app.agent_access import get_agent
 
-    return await get_agent().add_faq_entries(entries)
+    return cast(int, await get_agent().add_faq_entries(entries))
 
 
 async def _load_pending_doc(
-    db,
+    db: AsyncSession,
     document_id: int,
 ) -> KnowledgeDocument | None:
     result = await db.execute(
-        select(KnowledgeDocument).where(
-            KnowledgeDocument.id == document_id
-        )
+        select(KnowledgeDocument).where(KnowledgeDocument.id == document_id)
     )
     doc = result.scalar_one_or_none()
     if doc is None:
@@ -68,7 +66,7 @@ async def _load_pending_doc(
         return None
     if doc.status != STATUS_PENDING:
         return None
-    return doc
+    return cast(KnowledgeDocument | None, doc)
 
 
 def _cleanup_storage(file_path: str | None) -> None:

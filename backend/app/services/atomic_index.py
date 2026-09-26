@@ -7,8 +7,7 @@ import os
 import shutil
 from pathlib import Path
 
-from app.services.faiss_integrity import DIGEST_FILENAME
-from app.services.faiss_integrity import write_index_digest
+from app.services.faiss_integrity import DIGEST_FILENAME, write_index_digest
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +41,7 @@ def atomic_publish_index(
 
     for name in ("index.faiss", "index.pkl"):
         if not (staging / name).is_file():
-            raise FileNotFoundError(
-                f"Staging incomplete: missing {name}"
-            )
+            raise FileNotFoundError(f"Staging incomplete: missing {name}")
 
     write_index_digest(staging)
 

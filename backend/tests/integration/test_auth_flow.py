@@ -7,10 +7,7 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
-from tests.integration.helpers import assert_ok
-from tests.integration.helpers import bearer
-from tests.integration.helpers import login
-from tests.integration.helpers import register
+from tests.integration.helpers import assert_ok, bearer, login, register
 
 
 @pytest.mark.asyncio

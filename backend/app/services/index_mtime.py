@@ -40,9 +40,7 @@ class IndexMtimeWatcher:
 
     def mark_loaded(self, mtime: float | None = None) -> None:
         """Record the mtime corresponding to the in-memory index."""
-        self._seen_mtime = (
-            self.current_mtime() if mtime is None else mtime
-        )
+        self._seen_mtime = self.current_mtime() if mtime is None else mtime
         self._last_check_at = self._clock()
 
     def should_reload(self) -> bool:

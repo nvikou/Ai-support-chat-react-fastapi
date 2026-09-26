@@ -8,8 +8,7 @@ import pytest
 from httpx import AsyncClient
 from starlette.testclient import TestClient
 
-from tests.integration.helpers import register
-from tests.integration.helpers import ws_ticket
+from tests.integration.helpers import register, ws_ticket
 
 
 @pytest.fixture
@@ -119,9 +118,7 @@ async def test_ws_identify_persists_customer_profile(
         assert websocket.receive_json()["type"] == "message"
 
     result = await db_session.execute(
-        select(Conversation).where(
-            Conversation.id == conversation_id
-        )
+        select(Conversation).where(Conversation.id == conversation_id)
     )
     conversation = result.scalar_one()
     assert conversation.customer_name == "Ada Lovelace"

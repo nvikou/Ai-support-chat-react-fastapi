@@ -12,10 +12,12 @@ from pathlib import Path
 
 import pytest
 
-from app.services.upload_security import UploadTooLargeError
-from app.services.upload_security import UploadTypeRejectedError
-from app.services.upload_security import detect_kind_from_magic
-from app.services.upload_security import save_upload_streaming
+from app.services.upload_security import (
+    UploadTooLargeError,
+    UploadTypeRejectedError,
+    detect_kind_from_magic,
+    save_upload_streaming,
+)
 
 
 class FakeUpload:

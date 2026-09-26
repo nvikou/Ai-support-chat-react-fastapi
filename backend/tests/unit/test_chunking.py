@@ -17,8 +17,8 @@ def test_normalize_preserves_fenced_code_indentation() -> None:
         "```python\n"
         "def greet(name):\n"
         "    if name:\n"
-        "        return f\"hi {name}\"\n"
-        "    return \"hi\"\n"
+        '        return f"hi {name}"\n'
+        '    return "hi"\n'
         "```\n"
     )
     normalized = normalize_markdown_whitespace(source)
@@ -30,6 +30,4 @@ def test_normalize_preserves_fenced_code_indentation() -> None:
 
 def test_normalize_collapses_blank_line_runs() -> None:
     text = "para one\n\n\n\npara two\n"
-    assert normalize_markdown_whitespace(text) == (
-        "para one\n\npara two\n"
-    )
+    assert normalize_markdown_whitespace(text) == ("para one\n\npara two\n")

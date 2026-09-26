@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,13 +9,17 @@ from app.agent_access import get_agent
 from app.database import get_db
 from app.deps import require_admin
 from app.models import Conversation, KnowledgeDocument, Message, User
-from app.services.ingest_jobs import STATUS_FAILED
-from app.services.ingest_jobs import STATUS_INDEXED
-from app.services.ingest_jobs import STATUS_PENDING
-from app.services.vector_metrics import ADR_CHUNKS_WARN
-from app.services.vector_metrics import ADR_PENDING_BACKLOG_WARN
-from app.services.vector_metrics import ADR_SEARCH_QPS_WARN
-from app.services.vector_metrics import get_vector_metrics
+from app.services.ingest_jobs import (
+    STATUS_FAILED,
+    STATUS_INDEXED,
+    STATUS_PENDING,
+)
+from app.services.vector_metrics import (
+    ADR_CHUNKS_WARN,
+    ADR_PENDING_BACKLOG_WARN,
+    ADR_SEARCH_QPS_WARN,
+    get_vector_metrics,
+)
 from app.timeutils import utc_now
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -23,21 +29,19 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 async def get_stats(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
-):
+) -> dict[str, Any]:
     total = await db.scalar(select(func.count()).select_from(Conversation))
     escalated = await db.scalar(
         select(func.count())
         .select_from(Conversation)
-        .where(Conversation.escalated == True)
+        .where(Conversation.escalated.is_(True))
     )
     resolved = await db.scalar(
         select(func.count())
         .select_from(Conversation)
         .where(Conversation.status == "resolved")
     )
-    today = utc_now().replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    today = utc_now().replace(hour=0, minute=0, second=0, microsecond=0)
     today_count = await db.scalar(
         select(func.count())
         .select_from(Conversation)
@@ -47,8 +51,10 @@ async def get_stats(
         select(func.count()).select_from(User).where(User.role == "user")
     )
 
+    total_n = int(total or 0)
+    escalated_n = int(escalated or 0)
     resolution_rate = (
-        round((1 - (escalated / total)) * 100, 1) if total else 0
+        round((1 - (escalated_n / total_n)) * 100, 1) if total_n else 0
     )
 
     return {
@@ -65,7 +71,7 @@ async def get_stats(
 async def vector_store_ops(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
-):
+) -> dict[str, Any]:
     """Ops snapshot aligned with ADR 0001 migration thresholds.
 
     Liveness stays on ``GET /health``. This endpoint is admin-only so
@@ -94,13 +100,11 @@ async def vector_store_ops(
         )
     if search.qps_approx > ADR_SEARCH_QPS_WARN:
         alerts.append(
-            f"search_qps>{ADR_SEARCH_QPS_WARN} "
-            f"(have {search.qps_approx})"
+            f"search_qps>{ADR_SEARCH_QPS_WARN} " f"(have {search.qps_approx})"
         )
     if pending > ADR_PENDING_BACKLOG_WARN:
         alerts.append(
-            f"pending>{ADR_PENDING_BACKLOG_WARN} "
-            f"(have {pending})"
+            f"pending>{ADR_PENDING_BACKLOG_WARN} " f"(have {pending})"
         )
 
     return {
@@ -134,7 +138,7 @@ async def list_conversations(
     user_id: str | None = None,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
-):
+) -> list[dict[str, Any]]:
     query = (
         select(Conversation)
         .options(selectinload(Conversation.user))
@@ -174,7 +178,7 @@ async def get_messages(
     conversation_id: str,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
-):
+) -> list[dict[str, Any]]:
     result = await db.execute(
         select(Message)
         .where(Message.conversation_id == conversation_id)
@@ -199,7 +203,7 @@ async def resolve_conversation(
     conversation_id: str,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
-):
+) -> dict[str, str]:
     result = await db.execute(
         select(Conversation).where(Conversation.id == conversation_id)
     )
@@ -216,10 +220,8 @@ async def resolve_conversation(
 async def list_users(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
-):
-    result = await db.execute(
-        select(User).order_by(User.created_at.desc())
-    )
+) -> list[dict[str, Any]]:
+    result = await db.execute(select(User).order_by(User.created_at.desc()))
     users = result.scalars().all()
 
     items = []
@@ -229,18 +231,20 @@ async def list_users(
             .select_from(Conversation)
             .where(Conversation.user_id == u.id)
         )
-        items.append({
-            "id": u.id,
-            "email": u.email,
-            "full_name": u.full_name,
-            "role": u.role,
-            "is_active": u.is_active,
-            "conversation_count": conv_count or 0,
-            "last_login_at": (
-                u.last_login_at.isoformat() if u.last_login_at else None
-            ),
-            "created_at": u.created_at.isoformat(),
-        })
+        items.append(
+            {
+                "id": u.id,
+                "email": u.email,
+                "full_name": u.full_name,
+                "role": u.role,
+                "is_active": u.is_active,
+                "conversation_count": conv_count or 0,
+                "last_login_at": (
+                    u.last_login_at.isoformat() if u.last_login_at else None
+                ),
+                "created_at": u.created_at.isoformat(),
+            }
+        )
     return items
 
 
@@ -249,7 +253,7 @@ async def toggle_user_active(
     user_id: str,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
-):
+) -> dict[str, Any]:
     if user_id == admin.id:
         raise HTTPException(
             status_code=400,

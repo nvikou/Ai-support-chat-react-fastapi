@@ -11,10 +11,12 @@ from pathlib import Path
 
 import pytest
 
-from app.services.faiss_integrity import FaissIntegrityError
-from app.services.faiss_integrity import compute_index_digest
-from app.services.faiss_integrity import verify_index_digest
-from app.services.faiss_integrity import write_index_digest
+from app.services.faiss_integrity import (
+    FaissIntegrityError,
+    compute_index_digest,
+    verify_index_digest,
+    write_index_digest,
+)
 
 
 def _seed_index(directory: Path, *, payload: bytes) -> None:

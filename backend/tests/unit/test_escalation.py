@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from app.services.escalation import match_escalation
 
-
 _PATTERNS = {
     "en": {
         "legal": ["lawyer", "sue you"],

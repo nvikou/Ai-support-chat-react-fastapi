@@ -97,11 +97,13 @@ ignore = [
     "N815",
     # FastAPI Depends()/Query()/Header() in defaults is idiomatic.
     "B008",
+    # Domain exception names (LLMTimeout, CircuitOpen, …) are intentional.
+    "N818",
 ]
 
 [tool.ruff.lint.per-file-ignores]
 # Asserts and test secrets are intentional in the suite.
-"tests/**" = ["S101", "S105", "S106"]
+"tests/**" = ["S101", "S105", "S106", "S107"]
 # Settings defaults are overridden / rejected in production.
 "app/config.py" = ["S105", "S106"]
 

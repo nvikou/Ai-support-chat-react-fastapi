@@ -7,10 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from app.services.atomic_index import atomic_publish_index
-from app.services.atomic_index import prepare_staging_dir
-from app.services.faiss_integrity import DIGEST_FILENAME
-from app.services.faiss_integrity import compute_index_digest
+from app.services.atomic_index import atomic_publish_index, prepare_staging_dir
+from app.services.faiss_integrity import DIGEST_FILENAME, compute_index_digest
 from app.services.file_lock import InterprocessFileLock
 
 

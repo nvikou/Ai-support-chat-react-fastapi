@@ -6,8 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from app.services.llm_client import LLMCallResult
-from app.services.vector_store import InMemoryVectorStore
-from app.services.vector_store import VectorStore
+from app.services.vector_store import InMemoryVectorStore, VectorStore
 
 
 class FakeLLMClient:
@@ -64,9 +63,7 @@ class OfflineAgent:
         if hits:
             answer = hits[0].content
             confidence = 0.85
-            sources = [
-                str(h.metadata.get("source", "kb")) for h in hits
-            ]
+            sources = [str(h.metadata.get("source", "kb")) for h in hits]
         else:
             answer = (
                 "I do not have enough knowledge-base context "
@@ -77,9 +74,7 @@ class OfflineAgent:
         return {
             "answer": answer,
             "confidence": confidence,
-            "confidence_band": (
-                "high" if confidence >= 0.7 else "low"
-            ),
+            "confidence_band": ("high" if confidence >= 0.7 else "low"),
             "confidence_signals": {},
             "sources": sources,
             "should_escalate": confidence < 0.5,
@@ -110,9 +105,7 @@ class OfflineAgent:
     async def add_faq_entries(self, entries: list[dict]) -> int:
         docs = [
             {
-                "content": (
-                    f"Q: {e['question']}\nA: {e['answer']}"
-                ),
+                "content": (f"Q: {e['question']}\nA: {e['answer']}"),
                 "metadata": {
                     "source": "FAQ",
                     "category": e.get("category", "general"),

@@ -1,5 +1,12 @@
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from collections.abc import AsyncGenerator
+
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import DeclarativeBase
+
 from app.config import get_settings
 
 settings = get_settings()
@@ -12,17 +19,19 @@ class Base(DeclarativeBase):
     pass
 
 
-async def get_db():
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         yield session
 
 
-async def init_db():
+async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         from app.migrate import run_migrations
+
         await run_migrations(conn)
 
     async with AsyncSessionLocal() as session:
         from app.seed import seed_admin
+
         await seed_admin(session)

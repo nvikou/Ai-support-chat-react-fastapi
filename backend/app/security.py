@@ -1,6 +1,7 @@
 import hashlib
 import secrets
-from datetime import timedelta
+from datetime import datetime, timedelta
+from typing import Any
 
 import bcrypt
 from jose import JWTError, jwt
@@ -42,7 +43,7 @@ def create_access_token(user_id: str, role: str) -> str:
     )
 
 
-def decode_access_token(token: str) -> dict | None:
+def decode_access_token(token: str) -> dict[str, Any] | None:
     try:
         payload = jwt.decode(
             token,
@@ -64,7 +65,5 @@ def hash_refresh_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def refresh_token_expires_at():
-    return utc_now() + timedelta(
-        days=settings.refresh_token_expire_days
-    )
+def refresh_token_expires_at() -> datetime:
+    return utc_now() + timedelta(days=settings.refresh_token_expire_days)

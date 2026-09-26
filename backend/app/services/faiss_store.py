@@ -11,15 +11,15 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 
-from app.services.atomic_index import atomic_publish_index
-from app.services.atomic_index import prepare_staging_dir
+from app.services.atomic_index import atomic_publish_index, prepare_staging_dir
 from app.services.confidence import distance_to_similarity
-from app.services.faiss_integrity import FaissIntegrityError
-from app.services.faiss_integrity import verify_index_digest
+from app.services.faiss_integrity import (
+    FaissIntegrityError,
+    verify_index_digest,
+)
 from app.services.file_lock import InterprocessFileLock
 from app.services.index_mtime import IndexMtimeWatcher
-from app.services.vector_store import ScoredDocument
-from app.services.vector_store import VectorStoreHealth
+from app.services.vector_store import ScoredDocument, VectorStoreHealth
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +47,7 @@ class FAISSVectorStore:
         self._persist_dir = Path(persist_dir)
         self._persist_dir.mkdir(parents=True, exist_ok=True)
         self._thread_lock = threading.RLock()
-        self._lock = InterprocessFileLock(
-            self._persist_dir / LOCK_NAME
-        )
+        self._lock = InterprocessFileLock(self._persist_dir / LOCK_NAME)
         self._mtime = IndexMtimeWatcher(
             self._persist_dir,
             ttl_seconds=mtime_ttl_seconds,
@@ -124,9 +122,7 @@ class FAISSVectorStore:
             detail = ""
             if ready and self._store is not None:
                 try:
-                    count = int(
-                        self._store.index.ntotal  # type: ignore[attr-defined]
-                    )
+                    count = int(self._store.index.ntotal)
                 except Exception as exc:
                     detail = str(exc)
                     ready = False

@@ -15,14 +15,10 @@ from app.config import Settings
 def _build(**overrides) -> Settings:
     base = {
         "openai_api_key": "sk-test",
-        "database_url": (
-            "postgresql+asyncpg://u:p@localhost/db"
-        ),
+        "database_url": ("postgresql+asyncpg://u:p@localhost/db"),
         "admin_email": "ops@example.com",
         "admin_password": "local-only-password-not-default",
-        "secret_key": (
-            "development-secret-key-32chars-min"
-        ),
+        "secret_key": ("development-secret-key-32chars-min"),
         "environment": "development",
     }
     base.update(overrides)
@@ -54,18 +50,14 @@ def test_production_rejects_example_env_secret() -> None:
     with pytest.raises(ValidationError):
         _build(
             environment="production",
-            secret_key=(
-                "change-this-in-production-super-secret-key"
-            ),
+            secret_key=("change-this-in-production-super-secret-key"),
         )
 
 
 def test_production_accepts_strong_secret_key() -> None:
     settings = _build(
         environment="production",
-        secret_key=(
-            "n9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4"
-        ),
+        secret_key=("n9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4"),
         cookie_secure=True,
     )
     assert settings.is_production

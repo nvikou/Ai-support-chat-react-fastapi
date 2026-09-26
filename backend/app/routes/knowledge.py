@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 from pathlib import Path
+from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -21,17 +22,23 @@ from app.config import get_settings
 from app.database import get_db
 from app.deps import require_admin
 from app.models import KnowledgeDocument, User
-from app.services.ingest_jobs import STATUS_PENDING
-from app.services.ingest_jobs import run_faq_ingest
-from app.services.ingest_jobs import run_knowledge_ingest
-from app.services.rate_limit import UPLOAD_LIMIT
-from app.services.rate_limit import UPLOAD_WINDOW_SECONDS
-from app.services.rate_limit import RateLimitExceeded
-from app.services.rate_limit import enforce_user_rate_limit
-from app.services.rate_limit import http_429
-from app.services.upload_security import UploadTooLargeError
-from app.services.upload_security import UploadTypeRejectedError
-from app.services.upload_security import save_upload_streaming
+from app.services.ingest_jobs import (
+    STATUS_PENDING,
+    run_faq_ingest,
+    run_knowledge_ingest,
+)
+from app.services.rate_limit import (
+    UPLOAD_LIMIT,
+    UPLOAD_WINDOW_SECONDS,
+    RateLimitExceeded,
+    enforce_user_rate_limit,
+    http_429,
+)
+from app.services.upload_security import (
+    UploadTooLargeError,
+    UploadTypeRejectedError,
+    save_upload_streaming,
+)
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 settings = get_settings()
@@ -50,7 +57,7 @@ class FAQBatch(BaseModel):
     entries: list[FAQEntry]
 
 
-def _doc_payload(doc: KnowledgeDocument) -> dict:
+def _doc_payload(doc: KnowledgeDocument) -> dict[str, Any]:
     return {
         "id": doc.id,
         "filename": doc.filename,
@@ -70,7 +77,7 @@ async def upload_document(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
-):
+) -> dict[str, Any]:
     """Accept a file and schedule ingest off the request path.
 
     Why BackgroundTasks (for now): keeps the HTTP worker responsive
@@ -124,9 +131,7 @@ async def upload_document(
         )
 
     PENDING_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    held_path = PENDING_UPLOAD_DIR / (
-        f"{saved.content_hash}{saved.suffix}"
-    )
+    held_path = PENDING_UPLOAD_DIR / (f"{saved.content_hash}{saved.suffix}")
     shutil.move(saved.path, held_path)
 
     doc = KnowledgeDocument(
@@ -155,11 +160,9 @@ async def document_status(
     document_id: int,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
-):
+) -> dict[str, Any]:
     result = await db.execute(
-        select(KnowledgeDocument).where(
-            KnowledgeDocument.id == document_id
-        )
+        select(KnowledgeDocument).where(KnowledgeDocument.id == document_id)
     )
     doc = result.scalar_one_or_none()
     if doc is None:
@@ -176,7 +179,7 @@ async def add_faq(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
-):
+) -> dict[str, Any]:
     """Schedule FAQ indexing off the request path (same as uploads).
 
     Embedding + FAISS publish can block for seconds; returning 202 keeps
@@ -188,9 +191,7 @@ async def add_faq(
             detail="No FAQ entries provided",
         )
 
-    payload = [
-        e.model_dump() for e in batch.entries
-    ]
+    payload = [e.model_dump() for e in batch.entries]
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     content_hash = hashlib.sha256(
         raw.encode("utf-8"),
@@ -237,7 +238,7 @@ async def add_faq(
 async def list_documents(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
-):
+) -> list[dict[str, Any]]:
     result = await db.execute(
         select(KnowledgeDocument).order_by(
             KnowledgeDocument.uploaded_at.desc()

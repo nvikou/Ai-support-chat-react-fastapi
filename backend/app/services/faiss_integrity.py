@@ -21,8 +21,7 @@ def _require_index_files(directory: Path) -> list[Path]:
     missing = [p.name for p in paths if not p.is_file()]
     if missing:
         raise FaissIntegrityError(
-            "FAISS index incomplete; missing: "
-            + ", ".join(missing)
+            "FAISS index incomplete; missing: " + ", ".join(missing)
         )
     return paths
 
@@ -66,8 +65,7 @@ def verify_index_digest(directory: str | Path) -> str:
     digest_path = root / DIGEST_FILENAME
     if not digest_path.is_file():
         raise FaissIntegrityError(
-            "FAISS integrity digest missing; refusing to "
-            "deserialize index"
+            "FAISS integrity digest missing; refusing to " "deserialize index"
         )
     expected = digest_path.read_text(encoding="utf-8").strip()
     actual = compute_index_digest(root)
@@ -81,7 +79,6 @@ def verify_index_digest(directory: str | Path) -> str:
             },
         )
         raise FaissIntegrityError(
-            "FAISS integrity digest mismatch; refusing to "
-            "deserialize index"
+            "FAISS integrity digest mismatch; refusing to " "deserialize index"
         )
     return actual

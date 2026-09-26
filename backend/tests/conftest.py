@@ -13,11 +13,12 @@ import fakeredis
 import fakeredis.aioredis
 import pytest
 import pytest_asyncio
-from httpx import ASGITransport
-from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.ext.asyncio import async_sessionmaker
-from sqlalchemy.ext.asyncio import create_async_engine
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import StaticPool
 
 # ---------------------------------------------------------------------------
@@ -39,12 +40,16 @@ os.environ.setdefault("ENVIRONMENT", "development")
 os.environ.setdefault("GROUNDEDNESS_ENABLED", "false")
 
 from app.agent_access import override_agent  # noqa: E402
-from app.database import Base  # noqa: E402
-from app.database import get_db  # noqa: E402
+from app.database import (
+    Base,  # noqa: E402
+    get_db,  # noqa: E402
+)
 from app.seed import seed_admin  # noqa: E402
 from app.services.vector_store import InMemoryVectorStore  # noqa: E402
-from tests.fakes import FakeLLMClient  # noqa: E402
-from tests.fakes import OfflineAgent  # noqa: E402
+from tests.fakes import (
+    FakeLLMClient,  # noqa: E402
+    OfflineAgent,  # noqa: E402
+)
 
 
 @pytest.fixture
@@ -175,9 +180,7 @@ async def app(
     try:
         from app.main import app as fastapi_app
 
-        fastapi_app.dependency_overrides[get_db] = (
-            _override_get_db
-        )
+        fastapi_app.dependency_overrides[get_db] = _override_get_db
         yield fastapi_app
         fastapi_app.dependency_overrides.clear()
     finally:

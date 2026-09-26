@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from httpx import AsyncClient
-from httpx import Response
+from httpx import AsyncClient, Response
 
 
 async def register(

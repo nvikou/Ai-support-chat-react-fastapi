@@ -7,12 +7,8 @@ import time
 import uuid
 from dataclasses import dataclass
 from typing import Any
-from typing import Protocol
 
-from fastapi import Depends
-from fastapi import HTTPException
-from fastapi import Request
-from fastapi import status
+from fastapi import Depends, HTTPException, Request, status
 
 from app.redis_client import get_redis
 
@@ -27,28 +23,6 @@ WS_MESSAGE_LIMIT = 20
 WS_MESSAGE_WINDOW_SECONDS = 60
 UPLOAD_LIMIT = 10
 UPLOAD_WINDOW_SECONDS = 60 * 60
-
-
-class AsyncRedisSorted(Protocol):
-    async def zremrangebyscore(
-        self, key: str, min: Any, max: Any
-    ) -> Any: ...
-
-    async def zcard(self, key: str) -> int: ...
-
-    async def zadd(
-        self, key: str, mapping: dict[str, float]
-    ) -> Any: ...
-
-    async def zrange(
-        self,
-        key: str,
-        start: int,
-        end: int,
-        withscores: bool = False,
-    ) -> Any: ...
-
-    async def expire(self, key: str, time: int) -> Any: ...
 
 
 @dataclass(frozen=True)
@@ -81,7 +55,7 @@ def http_429(retry_after: int) -> HTTPException:
 class SlidingWindowRateLimiter:
     """Count hits in a rolling window using a Redis ZSET."""
 
-    def __init__(self, redis: AsyncRedisSorted) -> None:
+    def __init__(self, redis: Any) -> None:
         self._redis = redis
 
     async def hit(
@@ -172,7 +146,7 @@ def rate_limit_dependency(
     scope: str,
     limit: int,
     window_seconds: int,
-):
+) -> Any:
     """FastAPI dependency factory: limit by client IP."""
 
     async def _dependency(request: Request) -> None:

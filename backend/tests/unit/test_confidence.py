@@ -7,14 +7,18 @@ from pathlib import Path
 
 import pytest
 
-from app.services.confidence import compute_confidence
-from app.services.confidence import distance_to_similarity
-from app.services.confidence import safe_compute_confidence
-from app.services.escalation import load_escalation_patterns
-from app.services.escalation import match_escalation
-from app.services.groundedness import GroundednessCache
-from app.services.groundedness import parse_groundedness_json
+from app.services.confidence import (
+    compute_confidence,
+    distance_to_similarity,
+    safe_compute_confidence,
+)
+from app.services.escalation import load_escalation_patterns, match_escalation
+from app.services.groundedness import (
+    GroundednessCache,
+    parse_groundedness_json,
+)
 from app.services.prompts import build_system_prompt
+
 
 def _score(**kwargs):
     defaults = {
@@ -41,10 +45,7 @@ def test_retrieval_empty_scores_are_zero_signal() -> None:
 def test_retrieval_strong_gap_beats_weak_gap() -> None:
     strong = _score(retrieval_scores=[0.9, 0.2])
     weak = _score(retrieval_scores=[0.9, 0.88])
-    assert (
-        strong.signals["retrieval_score"]
-        > weak.signals["retrieval_score"]
-    )
+    assert strong.signals["retrieval_score"] > weak.signals["retrieval_score"]
 
 
 def test_retrieval_best_hit_dominates_when_alone() -> None:
@@ -87,10 +88,7 @@ def test_answer_length_short_is_partial() -> None:
 def test_answer_length_huge_is_penalized() -> None:
     mid = _score(answer_length=200)
     huge = _score(answer_length=5000)
-    assert (
-        huge.signals["answer_length"]
-        < mid.signals["answer_length"]
-    )
+    assert huge.signals["answer_length"] < mid.signals["answer_length"]
 
 
 # --- sources signal ---
@@ -213,9 +211,7 @@ def test_fail_closed_returns_zero_and_logs(
         "confidence_fail_closed" in r.message
         or r.__dict__.get("event") == "confidence_fail_closed"
         for r in caplog.records
-    ) or any(
-        "fail" in r.getMessage().lower() for r in caplog.records
-    )
+    ) or any("fail" in r.getMessage().lower() for r in caplog.records)
 
 
 # --- config ↔ prompt coherence ---
@@ -231,35 +227,32 @@ def test_prompt_tracks_settings_threshold() -> None:
     from app.config import Settings
 
     # Settings field used by agent must match prompt interpolation.
-    field = Settings.model_fields[
-        "confidence_uncertainty_threshold"
-    ]
+    field = Settings.model_fields["confidence_uncertainty_threshold"]
     default = field.default
     prompt = build_system_prompt(
         uncertainty_threshold=float(default),
     )
     assert str(default) in prompt
-    escal = Settings.model_fields[
-        "confidence_escalation_threshold"
-    ].default
+    escal = Settings.model_fields["confidence_escalation_threshold"].default
     assert float(default) >= float(escal)
 
 
 def test_distance_to_similarity_bounds() -> None:
     assert distance_to_similarity(0.0) == 1.0
     assert 0.0 < distance_to_similarity(1.0) < 1.0
-    assert distance_to_similarity(100.0) < distance_to_similarity(
-        1.0
-    )
+    assert distance_to_similarity(100.0) < distance_to_similarity(1.0)
 
 
 # --- groundedness parse / cache (no network) ---
 
 
 def test_parse_groundedness_json_strict() -> None:
-    assert parse_groundedness_json(
-        '{"groundedness": 0.75, "supported": 3, "total": 4}'
-    ) == 0.75
+    assert (
+        parse_groundedness_json(
+            '{"groundedness": 0.75, "supported": 3, "total": 4}'
+        )
+        == 0.75
+    )
     with pytest.raises((ValueError, KeyError, TypeError)):
         parse_groundedness_json("not-json")
 

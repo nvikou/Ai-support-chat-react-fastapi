@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from app.services.vector_metrics import VectorStoreMetrics
-from app.services.vector_metrics import reset_vector_metrics_for_tests
+from app.services.vector_metrics import (
+    VectorStoreMetrics,
+    reset_vector_metrics_for_tests,
+)
 
 
 def test_search_qps_uses_sliding_window() -> None:

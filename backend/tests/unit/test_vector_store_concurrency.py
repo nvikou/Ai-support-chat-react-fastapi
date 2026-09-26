@@ -59,8 +59,7 @@ def test_concurrent_adds_preserve_all_documents(
                 [
                     {
                         "content": (
-                            f"concurrent topic-{index} "
-                            f"unique-{index}"
+                            f"concurrent topic-{index} " f"unique-{index}"
                         ),
                         "metadata": {"source": f"w{index}"},
                     }
@@ -70,8 +69,7 @@ def test_concurrent_adds_preserve_all_documents(
             errors.append(exc)
 
     threads = [
-        threading.Thread(target=worker, args=(i,))
-        for i in range(workers)
+        threading.Thread(target=worker, args=(i,)) for i in range(workers)
     ]
     for thread in threads:
         thread.start()
@@ -121,7 +119,5 @@ def test_second_store_instance_reloads_published_index(
         k=3,
     )
     assert hits
-    assert any(
-        "five business days" in hit.content for hit in hits
-    )
+    assert any("five business days" in hit.content for hit in hits)
     assert reader.health().ready is True

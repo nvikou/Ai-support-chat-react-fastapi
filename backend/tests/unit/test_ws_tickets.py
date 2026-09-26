@@ -90,12 +90,18 @@ async def test_expired_ticket_is_rejected(store: WsTicketStore) -> None:
 async def test_ticket_bound_to_issuing_user(store: WsTicketStore) -> None:
     ticket = await store.issue(user_id="user-a")
     # Attacker presenting as another user must be refused.
-    assert await store.consume(
-        ticket,
-        expected_user_id="user-b",
-    ) is None
+    assert (
+        await store.consume(
+            ticket,
+            expected_user_id="user-b",
+        )
+        is None
+    )
     # Rightful owner can still consume the untouched ticket.
-    assert await store.consume(
-        ticket,
-        expected_user_id="user-a",
-    ) == "user-a"
+    assert (
+        await store.consume(
+            ticket,
+            expected_user_id="user-a",
+        )
+        == "user-a"
+    )

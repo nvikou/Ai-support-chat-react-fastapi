@@ -9,9 +9,11 @@ from __future__ import annotations
 import fakeredis.aioredis
 import pytest
 
-from app.services.rate_limit import RateLimitExceeded
-from app.services.rate_limit import SlidingWindowRateLimiter
-from app.services.rate_limit import http_429
+from app.services.rate_limit import (
+    RateLimitExceeded,
+    SlidingWindowRateLimiter,
+    http_429,
+)
 
 
 @pytest.fixture
@@ -57,9 +59,7 @@ async def test_register_limit_three_per_hour(
 ) -> None:
     key = "register:2.2.2.2"
     for _ in range(3):
-        assert (
-            await limiter.hit(key, limit=3, window_seconds=3600)
-        ).allowed
+        assert (await limiter.hit(key, limit=3, window_seconds=3600)).allowed
     denied = await limiter.hit(key, limit=3, window_seconds=3600)
     assert denied.allowed is False
 
@@ -70,9 +70,7 @@ async def test_ws_message_limit_twenty_per_minute(
 ) -> None:
     key = "ws:user-42"
     for _ in range(20):
-        assert (
-            await limiter.hit(key, limit=20, window_seconds=60)
-        ).allowed
+        assert (await limiter.hit(key, limit=20, window_seconds=60)).allowed
     denied = await limiter.hit(key, limit=20, window_seconds=60)
     assert denied.allowed is False
 
@@ -83,9 +81,7 @@ async def test_upload_limit_ten_per_hour(
 ) -> None:
     key = "upload:admin-1"
     for _ in range(10):
-        assert (
-            await limiter.hit(key, limit=10, window_seconds=3600)
-        ).allowed
+        assert (await limiter.hit(key, limit=10, window_seconds=3600)).allowed
     denied = await limiter.hit(key, limit=10, window_seconds=3600)
     assert denied.allowed is False
 

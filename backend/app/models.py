@@ -2,13 +2,13 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    String,
-    Text,
+    Boolean,
     DateTime,
     Float,
-    Boolean,
     ForeignKey,
     Integer,
+    String,
+    Text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -24,13 +24,9 @@ class User(Base):
         primary_key=True,
         default=lambda: str(uuid.uuid4()),
     )
-    email: Mapped[str] = mapped_column(
-        String(255), unique=True, index=True
-    )
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
-    full_name: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
-    )
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[str] = mapped_column(String(20), default="user")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -62,9 +58,7 @@ class RefreshToken(Base):
         String(36), ForeignKey("users.id"), index=True
     )
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True)
-    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
@@ -90,22 +84,16 @@ class Conversation(Base):
         nullable=True,
         index=True,
     )
-    title: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
-    )
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     customer_email: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )
     customer_name: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )
-    status: Mapped[str] = mapped_column(
-        String(50), default="active"
-    )
+    status: Mapped[str] = mapped_column(String(50), default="active")
     escalated: Mapped[bool] = mapped_column(Boolean, default=False)
-    escalation_reason: Mapped[str | None] = mapped_column(
-        Text, nullable=True
-    )
+    escalation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
@@ -161,17 +149,13 @@ class KnowledgeDocument(Base):
         Integer, primary_key=True, autoincrement=True
     )
     filename: Mapped[str] = mapped_column(String(255))
-    content_hash: Mapped[str] = mapped_column(
-        String(64), unique=True
-    )
+    content_hash: Mapped[str] = mapped_column(String(64), unique=True)
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
     # pending | indexed | failed — set before BackgroundTasks ingest.
     status: Mapped[str] = mapped_column(
         String(20), default="pending", index=True
     )
-    error_message: Mapped[str | None] = mapped_column(
-        Text, nullable=True
-    )
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     storage_path: Mapped[str | None] = mapped_column(
         String(512), nullable=True
     )

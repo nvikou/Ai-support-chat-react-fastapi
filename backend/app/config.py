@@ -3,19 +3,20 @@
 from functools import lru_cache
 
 from pydantic import model_validator
-from pydantic_settings import BaseSettings
-from pydantic_settings import SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Values that must never be used as production JWT signing keys.
-_KNOWN_WEAK_SECRET_KEYS = frozenset({
-    "change-this-in-production",
-    "change-this-in-production-super-secret-key",
-    "secret",
-    "secret_key",
-    "password",
-    "admin",
-    "changeme",
-})
+_KNOWN_WEAK_SECRET_KEYS = frozenset(
+    {
+        "change-this-in-production",
+        "change-this-in-production-super-secret-key",
+        "secret",
+        "secret_key",
+        "password",
+        "admin",
+        "changeme",
+    }
+)
 
 
 class Settings(BaseSettings):
@@ -62,13 +63,10 @@ class Settings(BaseSettings):
             return self
         key = (self.secret_key or "").strip()
         if not key:
-            raise ValueError(
-                "SECRET_KEY is required in production"
-            )
+            raise ValueError("SECRET_KEY is required in production")
         if len(key) < 32:
             raise ValueError(
-                "SECRET_KEY must be at least 32 characters "
-                "in production"
+                "SECRET_KEY must be at least 32 characters " "in production"
             )
         if key in _KNOWN_WEAK_SECRET_KEYS:
             raise ValueError(
@@ -80,4 +78,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    # Fields come from the environment / .env; mypy cannot see that.
+    return Settings()  # type: ignore[call-arg]

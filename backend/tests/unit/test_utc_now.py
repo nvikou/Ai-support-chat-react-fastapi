@@ -11,7 +11,6 @@ from pathlib import Path
 
 from app.timeutils import utc_now
 
-
 _APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 _UTCNOW_RE = re.compile(r"datetime\.utcnow\s*\(")
 
@@ -27,9 +26,7 @@ def test_app_sources_do_not_call_datetime_utcnow() -> None:
     for path in _APP_ROOT.rglob("*.py"):
         text = path.read_text(encoding="utf-8")
         if _UTCNOW_RE.search(text):
-            offenders.append(
-                str(path.relative_to(_APP_ROOT.parent))
-            )
+            offenders.append(str(path.relative_to(_APP_ROOT.parent)))
     assert offenders == [], (
         "Replace datetime.utcnow() with utc_now() / "
         f"datetime.now(timezone.utc): {offenders}"

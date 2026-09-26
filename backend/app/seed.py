@@ -9,9 +9,7 @@ settings = get_settings()
 
 
 async def seed_admin(db: AsyncSession) -> None:
-    result = await db.execute(
-        select(User).where(User.role == "admin")
-    )
+    result = await db.execute(select(User).where(User.role == "admin"))
     if result.scalar_one_or_none():
         return
 

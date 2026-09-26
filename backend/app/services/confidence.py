@@ -152,18 +152,11 @@ def compute_confidence(
     sources = _sources_signal(has_sources)
 
     # Weighted blend — retrieval + groundedness dominate.
-    raw = (
-        0.40 * retrieval
-        + 0.40 * grounded
-        + 0.10 * length
-        + 0.10 * sources
-    )
+    raw = 0.40 * retrieval + 0.40 * grounded + 0.10 * length + 0.10 * sources
     raw = _clamp(raw)
 
     best_hit = (
-        max(float(s) for s in retrieval_scores)
-        if retrieval_scores
-        else 0.0
+        max(float(s) for s in retrieval_scores) if retrieval_scores else 0.0
     )
     no_context = best_hit < retrieval_min_similarity
     score = min(raw, _NO_CONTEXT_CAP) if no_context else raw
@@ -214,12 +207,26 @@ def compute_confidence(
 
 
 def safe_compute_confidence(
-    *args,
-    **kwargs,
+    retrieval_scores: list[float],
+    groundedness: float,
+    answer_length: int,
+    has_sources: bool,
+    *,
+    retrieval_min_similarity: float = 0.35,
+    escalation_threshold: float = 0.5,
+    uncertainty_threshold: float = 0.7,
 ) -> ConfidenceResult:
     """Fail closed: any scoring error yields 0.0 and forces caution."""
     try:
-        return compute_confidence(*args, **kwargs)
+        return compute_confidence(
+            retrieval_scores,
+            groundedness,
+            answer_length,
+            has_sources,
+            retrieval_min_similarity=retrieval_min_similarity,
+            escalation_threshold=escalation_threshold,
+            uncertainty_threshold=uncertainty_threshold,
+        )
     except Exception as exc:
         logger.warning(
             "confidence_fail_closed",
