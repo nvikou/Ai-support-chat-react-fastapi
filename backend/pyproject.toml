@@ -22,6 +22,8 @@ dev = [
     "mypy==1.13.0",
     "types-PyYAML==6.0.12.20240917",
     "types-python-jose==3.3.4.20240106",
+    "pre-commit==4.0.1",
+    "detect-secrets==1.5.0",
 ]
 
 [build-system]
@@ -93,6 +95,8 @@ select = [
 ignore = [
     # FastAPI / Pydantic often use `id` / `type` field names.
     "N815",
+    # FastAPI Depends()/Query()/Header() in defaults is idiomatic.
+    "B008",
 ]
 
 [tool.ruff.lint.per-file-ignores]
