@@ -1,11 +1,13 @@
 import hashlib
 import secrets
 from datetime import datetime, timedelta
+from typing import Any
 
 import bcrypt
 from jose import JWTError, jwt
 
 from app.config import get_settings
+from app.timeutils import utc_now
 
 settings = get_settings()
 
@@ -25,7 +27,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(user_id: str, role: str) -> str:
-    expire = datetime.utcnow() + timedelta(
+    expire = utc_now() + timedelta(
         minutes=settings.access_token_expire_minutes
     )
     payload = {
@@ -34,12 +36,20 @@ def create_access_token(user_id: str, role: str) -> str:
         "type": "access",
         "exp": expire,
     }
-    return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
+    return jwt.encode(
+        payload,
+        settings.secret_key,
+        algorithm=ALGORITHM,
+    )
 
 
-def decode_access_token(token: str) -> dict | None:
+def decode_access_token(token: str) -> dict[str, Any] | None:
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[ALGORITHM],
+        )
         if payload.get("type") != "access":
             return None
         return payload
@@ -56,4 +66,4 @@ def hash_refresh_token(token: str) -> str:
 
 
 def refresh_token_expires_at() -> datetime:
-    return datetime.utcnow() + timedelta(days=settings.refresh_token_expire_days)
+    return utc_now() + timedelta(days=settings.refresh_token_expire_days)

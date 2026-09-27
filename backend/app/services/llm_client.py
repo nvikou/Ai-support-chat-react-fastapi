@@ -6,19 +6,18 @@ import asyncio
 import logging
 import random
 import time
-from collections.abc import Awaitable
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
-from typing import TypeVar
+from typing import Any, TypeVar
 
-from app.config import Settings
-from app.config import get_settings
-from app.exceptions import CircuitOpen
-from app.exceptions import LLMError
-from app.exceptions import LLMRateLimited
-from app.exceptions import LLMTimeout
-from app.exceptions import LLMUnavailable
+from app.config import Settings, get_settings
+from app.exceptions import (
+    CircuitOpen,
+    LLMError,
+    LLMRateLimited,
+    LLMTimeout,
+    LLMUnavailable,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +72,7 @@ class InMemoryCircuitBreaker:
             return
         if self.is_open:
             raise CircuitOpen(
-                "LLM circuit breaker is open; "
-                "skipping provider call"
+                "LLM circuit breaker is open; " "skipping provider call"
             )
         logger.info(
             "circuit_breaker_reset",
@@ -99,9 +97,7 @@ class InMemoryCircuitBreaker:
             "circuit_breaker_opened",
             extra={
                 "event": "circuit_breaker_opened",
-                "consecutive_failures": (
-                    self._consecutive_failures
-                ),
+                "consecutive_failures": (self._consecutive_failures),
                 "threshold": self._threshold,
                 "reset_seconds": self._reset_seconds,
             },
@@ -122,7 +118,7 @@ def _status_code(exc: BaseException) -> int | None:
 
 
 def _is_timeout(exc: BaseException) -> bool:
-    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+    if isinstance(exc, asyncio.TimeoutError | TimeoutError):
         return True
     return "timeout" in type(exc).__name__.lower()
 
@@ -163,9 +159,7 @@ class LLMClient:
         self._clock = clock or time.monotonic
         self._circuit = circuit or InMemoryCircuitBreaker(
             threshold=self._settings.circuit_breaker_threshold,
-            reset_seconds=(
-                self._settings.circuit_breaker_reset_seconds
-            ),
+            reset_seconds=(self._settings.circuit_breaker_reset_seconds),
             clock=self._clock,
         )
 
@@ -186,10 +180,7 @@ class LLMClient:
         chains when falling back to a cheaper model.
         """
         primary = primary_model or self._settings.openai_model
-        fallback = (
-            fallback_model
-            or self._settings.openai_fallback_model
-        )
+        fallback = fallback_model or self._settings.openai_fallback_model
 
         self._circuit.guard()
 
@@ -205,7 +196,8 @@ class LLMClient:
         except LLMError as err:
             primary_error = err
 
-        assert primary_error is not None
+        if primary_error is None:
+            raise RuntimeError("LLM primary attempt left no error")
 
         # Permanent client errors (400/401): do not fallback.
         if not isinstance(primary_error, _TRANSIENT_ERRORS):
@@ -245,9 +237,7 @@ class LLMClient:
                     extra={
                         "event": "llm_fallback_failed",
                         "model": fallback,
-                        "error_type": type(
-                            fallback_error
-                        ).__name__,
+                        "error_type": type(fallback_error).__name__,
                     },
                 )
                 raise fallback_error
@@ -272,7 +262,7 @@ class LLMClient:
                     raise
                 if attempt >= max_retries - 1:
                     break
-                delay = (2 ** attempt) + random.uniform(0, 1)
+                delay = (2**attempt) + random.uniform(0, 1)  # noqa: S311
                 logger.warning(
                     "llm_retry",
                     extra={
@@ -286,7 +276,8 @@ class LLMClient:
                 )
                 await self._sleep(delay)
 
-        assert last_error is not None
+        if last_error is None:
+            raise RuntimeError("LLM retry loop exited without an error")
         raise last_error
 
     async def _attempt(

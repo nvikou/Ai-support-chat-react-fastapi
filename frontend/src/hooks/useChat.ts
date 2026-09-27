@@ -26,9 +26,13 @@ type WsTicketResponse = {
   expires_in: number
 }
 
+// Stable default: a fresh `[]` each call would retrigger the session
+// effect forever via referential inequality.
+const EMPTY_MESSAGES: Message[] = []
+
 export function useChat({
   sessionId: externalSessionId,
-  initialMessages = [],
+  initialMessages = EMPTY_MESSAGES,
   onTitleChange,
 }: Options = {}) {
   const [messages, setMessages] = useState<Message[]>(initialMessages)
@@ -58,10 +62,9 @@ export function useChat({
     void (async () => {
       try {
         // One-time ticket over HTTPS — JWT must never appear in the WS URL.
-        const { ticket } = await apiJson<WsTicketResponse>(
-          '/auth/ws-ticket',
-          { method: 'POST' },
-        )
+        const { ticket } = await apiJson<WsTicketResponse>('/auth/ws-ticket', {
+          method: 'POST',
+        })
         const wsUrl =
           `${window.location.protocol === 'https:' ? 'wss' : 'ws'}` +
           `://${window.location.host}/ws/chat/${sessionId.current}` +

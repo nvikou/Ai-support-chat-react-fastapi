@@ -41,9 +41,7 @@ export default function AdminUsersPage() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Users</h1>
-          <p className="text-sm text-gray-500">
-            Manage registered accounts
-          </p>
+          <p className="text-sm text-gray-500">Manage registered accounts</p>
         </div>
       </div>
 
@@ -92,9 +90,7 @@ export default function AdminUsersPage() {
                           : 'bg-gray-100 text-gray-600',
                       )}
                     >
-                      {u.role === 'admin' && (
-                        <Shield className="w-3 h-3" />
-                      )}
+                      {u.role === 'admin' && <Shield className="w-3 h-3" />}
                       {u.role}
                     </span>
                   </td>

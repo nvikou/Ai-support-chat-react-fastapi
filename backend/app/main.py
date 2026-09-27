@@ -1,16 +1,19 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-from app.database import init_db
+
 from app.config import get_settings
+from app.database import init_db
 from app.redis_client import close_redis
-from app.routes import chat, knowledge, admin, auth, me
+from app.routes import admin, auth, chat, knowledge, me
 
 settings = get_settings()
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await init_db()
     try:
         yield
@@ -41,5 +44,5 @@ app.include_router(admin.router)
 
 
 @app.get("/health")
-async def health():
+async def health() -> dict[str, str]:
     return {"status": "ok", "service": "VateCon AI Support"}

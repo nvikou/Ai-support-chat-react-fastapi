@@ -1,6 +1,13 @@
-from datetime import datetime
+from datetime import UTC
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +15,7 @@ from app.config import get_settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models import RefreshToken, User
+from app.redis_client import get_redis
 from app.schemas import (
     AuthResponse,
     LoginRequest,
@@ -24,9 +32,15 @@ from app.security import (
     refresh_token_expires_at,
     verify_password,
 )
-from app.redis_client import get_redis
-from app.services.ws_tickets import DEFAULT_TTL_SECONDS
-from app.services.ws_tickets import WsTicketStore
+from app.services.rate_limit import (
+    LOGIN_LIMIT,
+    LOGIN_WINDOW_SECONDS,
+    REGISTER_LIMIT,
+    REGISTER_WINDOW_SECONDS,
+    rate_limit_dependency,
+)
+from app.services.ws_tickets import DEFAULT_TTL_SECONDS, WsTicketStore
+from app.timeutils import utc_now
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 settings = get_settings()
@@ -62,7 +76,7 @@ async def _issue_tokens(
             expires_at=refresh_token_expires_at(),
         )
     )
-    user.last_login_at = datetime.utcnow()
+    user.last_login_at = utc_now()
     await db.commit()
     _set_refresh_cookie(response, refresh)
     return AuthResponse(
@@ -76,7 +90,12 @@ async def register(
     body: RegisterRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
-):
+    _: None = rate_limit_dependency(
+        scope="register",
+        limit=REGISTER_LIMIT,
+        window_seconds=REGISTER_WINDOW_SECONDS,
+    ),
+) -> AuthResponse:
     existing = await db.execute(
         select(User).where(User.email == body.email.lower())
     )
@@ -102,7 +121,12 @@ async def login(
     body: LoginRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
-):
+    _: None = rate_limit_dependency(
+        scope="login",
+        limit=LOGIN_LIMIT,
+        window_seconds=LOGIN_WINDOW_SECONDS,
+    ),
+) -> AuthResponse:
     result = await db.execute(
         select(User).where(User.email == body.email.lower())
     )
@@ -125,7 +149,7 @@ async def refresh_token(
     request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db),
-):
+) -> AuthResponse:
     token = request.cookies.get(REFRESH_COOKIE)
     if not token:
         raise HTTPException(
@@ -137,11 +161,15 @@ async def refresh_token(
     result = await db.execute(
         select(RefreshToken).where(
             RefreshToken.token_hash == token_hash,
-            RefreshToken.revoked == False,
+            RefreshToken.revoked.is_(False),
         )
     )
     stored = result.scalar_one_or_none()
-    if not stored or stored.expires_at < datetime.utcnow():
+    expires_at = stored.expires_at if stored else None
+    # SQLite may strip tzinfo; compare in UTC either way.
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if not stored or expires_at is None or expires_at < utc_now():
         _clear_refresh_cookie(response)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -169,7 +197,7 @@ async def logout(
     response: Response,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
-):
+) -> dict[str, str]:
     token = request.cookies.get(REFRESH_COOKIE)
     if token:
         token_hash = hash_refresh_token(token)
@@ -188,14 +216,14 @@ async def logout(
 
 
 @router.get("/me", response_model=UserPublic)
-async def get_me(user: User = Depends(get_current_user)):
+async def get_me(user: User = Depends(get_current_user)) -> UserPublic:
     return UserPublic.model_validate(user)
 
 
 @router.post("/ws-ticket", response_model=WsTicketResponse)
 async def create_ws_ticket(
     user: User = Depends(get_current_user),
-):
+) -> WsTicketResponse:
     """Mint a one-time ticket for WebSocket auth (no JWT in URL)."""
     store = WsTicketStore(await get_redis(), ttl_seconds=DEFAULT_TTL_SECONDS)
     ticket = await store.issue(user_id=user.id)

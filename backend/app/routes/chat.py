@@ -1,17 +1,22 @@
 import json
 import uuid
-from datetime import datetime
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent import get_agent
+from app.agent_access import get_agent
 from app.database import AsyncSessionLocal
 from app.models import Conversation, Message, User
 from app.redis_client import get_redis
+from app.services.rate_limit import (
+    WS_MESSAGE_LIMIT,
+    WS_MESSAGE_WINDOW_SECONDS,
+    RateLimitExceeded,
+    enforce_user_rate_limit,
+)
 from app.services.ws_errors import build_ws_client_error
 from app.services.ws_tickets import WsTicketStore
+from app.timeutils import utc_now
 
 router = APIRouter()
 
@@ -28,29 +33,31 @@ async def chat_websocket(
     websocket: WebSocket,
     session_id: str,
     ticket: str = Query(...),
-):
+) -> None:
     await websocket.accept()
 
     async with AsyncSessionLocal() as db:
         store = WsTicketStore(await get_redis())
         user_id = await store.consume(ticket)
         if not user_id:
-            await websocket.send_json({
-                "type": "error",
-                "content": "Authentication required",
-            })
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "content": "Authentication required",
+                }
+            )
             await websocket.close(code=4401)
             return
 
-        result_user = await db.execute(
-            select(User).where(User.id == user_id)
-        )
+        result_user = await db.execute(select(User).where(User.id == user_id))
         user = result_user.scalar_one_or_none()
         if not user or not user.is_active:
-            await websocket.send_json({
-                "type": "error",
-                "content": "Authentication required",
-            })
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "content": "Authentication required",
+                }
+            )
             await websocket.close(code=4401)
             return
 
@@ -63,10 +70,12 @@ async def chat_websocket(
 
         if conversation:
             if conversation.user_id and conversation.user_id != user.id:
-                await websocket.send_json({
-                    "type": "error",
-                    "content": "Access denied",
-                })
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "content": "Access denied",
+                    }
+                )
                 await websocket.close(code=4403)
                 return
             if not conversation.user_id:
@@ -97,25 +106,44 @@ async def chat_websocket(
             for m in msg_result.scalars().all()
         ]
 
-        await websocket.send_json({
-            "type": "connected",
-            "conversation_id": conversation.id,
-            "escalated": conversation.escalated,
-            "title": conversation.title,
-        })
+        await websocket.send_json(
+            {
+                "type": "connected",
+                "conversation_id": conversation.id,
+                "escalated": conversation.escalated,
+                "title": conversation.title,
+            }
+        )
 
         try:
             while True:
                 data = await websocket.receive_json()
-                user_message = data.get("message", "").strip()
-
-                if not user_message:
-                    continue
-
+                # Control frames first — identify has no ``message``.
                 if data.get("type") == "identify":
                     conversation.customer_name = data.get("name")
                     conversation.customer_email = data.get("email")
                     await db.commit()
+                    continue
+
+                user_message = data.get("message", "").strip()
+                if not user_message:
+                    continue
+
+                try:
+                    await enforce_user_rate_limit(
+                        scope="ws",
+                        user_id=user.id,
+                        limit=WS_MESSAGE_LIMIT,
+                        window_seconds=WS_MESSAGE_WINDOW_SECONDS,
+                    )
+                except RateLimitExceeded as exc:
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "content": "Rate limit exceeded",
+                            "retry_after": exc.retry_after,
+                        }
+                    )
                     continue
 
                 if not conversation.title:
@@ -142,28 +170,34 @@ async def chat_websocket(
                     sources=json.dumps(response["sources"]),
                 )
                 db.add(assistant_msg)
-                history.append({
-                    "role": "assistant",
-                    "content": response["answer"],
-                })
+                history.append(
+                    {
+                        "role": "assistant",
+                        "content": response["answer"],
+                    }
+                )
 
                 if response["should_escalate"] and not conversation.escalated:
                     conversation.escalated = True
-                    conversation.escalation_reason = response["escalation_reason"]
+                    conversation.escalation_reason = response[
+                        "escalation_reason"
+                    ]
                     conversation.status = "escalated"
 
-                conversation.updated_at = datetime.utcnow()
+                conversation.updated_at = utc_now()
                 await db.commit()
 
-                await websocket.send_json({
-                    "type": "message",
-                    "content": response["answer"],
-                    "confidence": response["confidence"],
-                    "sources": response["sources"],
-                    "escalated": conversation.escalated,
-                    "escalation_reason": response.get("escalation_reason"),
-                    "title": conversation.title,
-                })
+                await websocket.send_json(
+                    {
+                        "type": "message",
+                        "content": response["answer"],
+                        "confidence": response["confidence"],
+                        "sources": response["sources"],
+                        "escalated": conversation.escalated,
+                        "escalation_reason": response.get("escalation_reason"),
+                        "title": conversation.title,
+                    }
+                )
 
         except WebSocketDisconnect:
             pass

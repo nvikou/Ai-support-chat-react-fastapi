@@ -80,7 +80,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }),
       })
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: 'Register failed' }))
+        const err = await res
+          .json()
+          .catch(() => ({ detail: 'Register failed' }))
         throw new Error(err.detail || 'Register failed')
       }
       const data = await res.json()
@@ -111,9 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user, loading, login, register, logout],
   )
 
-  return (
-    <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-  )
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

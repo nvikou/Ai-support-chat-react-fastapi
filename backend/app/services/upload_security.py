@@ -8,8 +8,7 @@ import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
-from typing import Protocol
+from typing import Literal, Protocol
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +24,7 @@ class UploadTooLargeError(Exception):
 
     def __init__(self, max_bytes: int) -> None:
         self.max_bytes = max_bytes
-        super().__init__(
-            f"Upload exceeds maximum size of {max_bytes} bytes"
-        )
+        super().__init__(f"Upload exceeds maximum size of {max_bytes} bytes")
 
 
 class UploadTypeRejectedError(Exception):

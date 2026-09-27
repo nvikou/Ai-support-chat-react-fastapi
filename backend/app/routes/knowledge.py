@@ -1,19 +1,50 @@
+import hashlib
+import json
 import os
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+import shutil
+from pathlib import Path
+from typing import Any
+
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+    status,
+)
+from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.config import get_settings
 from app.database import get_db
 from app.deps import require_admin
 from app.models import KnowledgeDocument, User
-from app.agent import get_agent
-from app.services.upload_security import UploadTooLargeError
-from app.services.upload_security import UploadTypeRejectedError
-from app.services.upload_security import save_upload_streaming
-from pydantic import BaseModel
+from app.services.ingest_jobs import (
+    STATUS_PENDING,
+    run_faq_ingest,
+    run_knowledge_ingest,
+)
+from app.services.rate_limit import (
+    UPLOAD_LIMIT,
+    UPLOAD_WINDOW_SECONDS,
+    RateLimitExceeded,
+    enforce_user_rate_limit,
+    http_429,
+)
+from app.services.upload_security import (
+    UploadTooLargeError,
+    UploadTypeRejectedError,
+    save_upload_streaming,
+)
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 settings = get_settings()
+
+# Durable holding area until BackgroundTasks finish ingest.
+PENDING_UPLOAD_DIR = Path("./uploads/pending")
 
 
 class FAQEntry(BaseModel):
@@ -26,14 +57,50 @@ class FAQBatch(BaseModel):
     entries: list[FAQEntry]
 
 
-@router.post("/upload")
+def _doc_payload(doc: KnowledgeDocument) -> dict[str, Any]:
+    return {
+        "id": doc.id,
+        "filename": doc.filename,
+        "chunk_count": doc.chunk_count,
+        "status": doc.status,
+        "error_message": doc.error_message,
+        "uploaded_at": doc.uploaded_at.isoformat(),
+    }
+
+
+@router.post(
+    "/upload",
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
-):
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Accept a file and schedule ingest off the request path.
+
+    Why BackgroundTasks (for now): keeps the HTTP worker responsive
+    without standing up Celery/ARQ. Why that is not enough later:
+    tasks die with the process, are invisible to other workers, and
+    have no durable retry — migrate to a Redis/Postgres queue before
+    scaling beyond one app instance.
+    """
+    try:
+        await enforce_user_rate_limit(
+            scope="upload",
+            user_id=admin.id,
+            limit=UPLOAD_LIMIT,
+            window_seconds=UPLOAD_WINDOW_SECONDS,
+        )
+    except RateLimitExceeded as exc:
+        raise http_429(exc.retry_after) from exc
+
     if not file.filename:
-        raise HTTPException(status_code=400, detail="No file provided")
+        raise HTTPException(
+            status_code=400,
+            detail="No file provided",
+        )
 
     try:
         saved = await save_upload_streaming(
@@ -63,55 +130,119 @@ async def upload_document(
             detail="Document already uploaded",
         )
 
-    try:
-        agent = get_agent()
-        chunk_count = await agent.ingest_document(
-            saved.path,
-            file.filename,
-        )
-    finally:
-        os.unlink(saved.path)
+    PENDING_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    held_path = PENDING_UPLOAD_DIR / (f"{saved.content_hash}{saved.suffix}")
+    shutil.move(saved.path, held_path)
 
     doc = KnowledgeDocument(
         filename=file.filename,
         content_hash=saved.content_hash,
-        chunk_count=chunk_count,
+        chunk_count=0,
+        status=STATUS_PENDING,
+        storage_path=str(held_path),
     )
     db.add(doc)
     await db.commit()
+    await db.refresh(doc)
 
-    return {"filename": file.filename, "chunks_indexed": chunk_count}
+    background_tasks.add_task(run_knowledge_ingest, doc.id)
+
+    return {
+        "id": doc.id,
+        "filename": doc.filename,
+        "status": doc.status,
+        "message": "Ingest scheduled",
+    }
 
 
-@router.post("/faq")
+@router.get("/documents/{document_id}/status")
+async def document_status(
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> dict[str, Any]:
+    result = await db.execute(
+        select(KnowledgeDocument).where(KnowledgeDocument.id == document_id)
+    )
+    doc = result.scalar_one_or_none()
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return _doc_payload(doc)
+
+
+@router.post(
+    "/faq",
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def add_faq(
     batch: FAQBatch,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
-):
-    agent = get_agent()
-    count = await agent.add_faq_entries(
-        [e.model_dump() for e in batch.entries]
+) -> dict[str, Any]:
+    """Schedule FAQ indexing off the request path (same as uploads).
+
+    Embedding + FAISS publish can block for seconds; returning 202 keeps
+    the admin UI responsive and reuses pending→indexed|failed status.
+    """
+    if not batch.entries:
+        raise HTTPException(
+            status_code=400,
+            detail="No FAQ entries provided",
+        )
+
+    payload = [e.model_dump() for e in batch.entries]
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+    content_hash = hashlib.sha256(
+        raw.encode("utf-8"),
+    ).hexdigest()
+
+    result = await db.execute(
+        select(KnowledgeDocument).where(
+            KnowledgeDocument.content_hash == content_hash
+        )
     )
-    return {"entries_added": count}
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409,
+            detail="Identical FAQ batch already uploaded",
+        )
+
+    PENDING_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    held_path = PENDING_UPLOAD_DIR / f"{content_hash}.faq.json"
+    held_path.write_text(raw, encoding="utf-8")
+
+    doc = KnowledgeDocument(
+        filename=f"faq-batch-{len(payload)}.json",
+        content_hash=content_hash,
+        chunk_count=0,
+        status=STATUS_PENDING,
+        storage_path=str(held_path),
+    )
+    db.add(doc)
+    await db.commit()
+    await db.refresh(doc)
+
+    background_tasks.add_task(run_faq_ingest, doc.id)
+
+    return {
+        "id": doc.id,
+        "filename": doc.filename,
+        "status": doc.status,
+        "entries": len(payload),
+        "message": "FAQ ingest scheduled",
+    }
 
 
 @router.get("/documents")
 async def list_documents(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
-):
+) -> list[dict[str, Any]]:
     result = await db.execute(
         select(KnowledgeDocument).order_by(
             KnowledgeDocument.uploaded_at.desc()
         )
     )
     docs = result.scalars().all()
-    return [
-        {
-            "id": d.id,
-            "filename": d.filename,
-            "chunk_count": d.chunk_count,
-            "uploaded_at": d.uploaded_at.isoformat(),
-        }
-        for d in docs
-    ]
+    return [_doc_payload(d) for d in docs]

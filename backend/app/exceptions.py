@@ -8,7 +8,7 @@ class LLMError(Exception):
         self,
         message: str,
         *,
-        cause: Exception | None = None,
+        cause: BaseException | None = None,
     ) -> None:
         super().__init__(message)
         self.cause = cause

@@ -1,4 +1,5 @@
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
@@ -17,7 +18,7 @@ async def list_my_conversations(
     status: str | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
-):
+) -> list[dict[str, Any]]:
     query = (
         select(Conversation)
         .where(Conversation.user_id == user.id)
@@ -37,16 +38,18 @@ async def list_my_conversations(
             .select_from(Message)
             .where(Message.conversation_id == conv.id)
         )
-        items.append({
-            "id": conv.id,
-            "session_id": conv.session_id,
-            "title": conv.title or "New conversation",
-            "status": conv.status,
-            "escalated": conv.escalated,
-            "message_count": count or 0,
-            "created_at": conv.created_at.isoformat(),
-            "updated_at": conv.updated_at.isoformat(),
-        })
+        items.append(
+            {
+                "id": conv.id,
+                "session_id": conv.session_id,
+                "title": conv.title or "New conversation",
+                "status": conv.status,
+                "escalated": conv.escalated,
+                "message_count": count or 0,
+                "created_at": conv.created_at.isoformat(),
+                "updated_at": conv.updated_at.isoformat(),
+            }
+        )
     return items
 
 
@@ -55,7 +58,7 @@ async def get_my_messages(
     conversation_id: str,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
-):
+) -> list[dict[str, Any]]:
     result = await db.execute(
         select(Conversation).where(
             Conversation.id == conversation_id,
@@ -89,7 +92,7 @@ async def get_my_messages(
 async def create_conversation(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     session_id = str(uuid.uuid4())
     conversation = Conversation(
         id=str(uuid.uuid4()),

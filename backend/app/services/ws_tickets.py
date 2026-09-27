@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import secrets
 from typing import Any
-from typing import Protocol
 
 logger = logging.getLogger(__name__)
 
@@ -17,27 +16,12 @@ DEFAULT_TTL_SECONDS = 60
 KEY_PREFIX = "ws_ticket:"
 
 
-class AsyncRedisLike(Protocol):
-    async def set(
-        self,
-        key: str,
-        value: str,
-        *,
-        ex: int | None = None,
-        nx: bool = False,
-    ) -> Any: ...
-
-    async def get(self, key: str) -> str | bytes | None: ...
-
-    async def delete(self, *keys: str) -> Any: ...
-
-
 class WsTicketStore:
     """Issue and atomically consume opaque WS tickets."""
 
     def __init__(
         self,
-        redis: AsyncRedisLike,
+        redis: Any,
         *,
         ttl_seconds: int = DEFAULT_TTL_SECONDS,
     ) -> None:
@@ -83,10 +67,7 @@ class WsTicketStore:
         if raw is None:
             return None
         user_id = raw.decode() if isinstance(raw, bytes) else str(raw)
-        if (
-            expected_user_id is not None
-            and user_id != expected_user_id
-        ):
+        if expected_user_id is not None and user_id != expected_user_id:
             logger.warning(
                 "ws_ticket_user_mismatch",
                 extra={

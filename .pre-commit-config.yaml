@@ -1,0 +1,51 @@
+# Local hooks aligned with CI (ruff / mypy versions match backend/pyproject.toml).
+# Setup:  pip install pre-commit && pre-commit install
+#         mypy hook expects backend.[dev] installed in the active Python.
+# Manual: pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: check-yaml
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (backend/app)
+        language: system
+        entry: python
+        args:
+          - -m
+          - mypy
+          - --config-file=backend/pyproject.toml
+          - backend/app
+        files: ^backend/app/
+        pass_filenames: false
+        types: [python]
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: [--baseline, .secrets.baseline]
+        exclude: >
+          (?x)^(
+            frontend/package-lock\.json|
+            .*\.png$|
+            .*\.jpg$|
+            .*\.jpeg$|
+            .*\.gif$|
+            .*\.webp$|
+            .*\.ico$
+          )$
