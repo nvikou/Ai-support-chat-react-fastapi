@@ -180,17 +180,6 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 
-      - name: Save images for security scan
-        run: docker save vatecon-backend:ci vatecon-frontend:ci | gzip > images.tar.gz
-
-      - name: Upload image tarball
-        uses: actions/upload-artifact@v4
-        with:
-          name: ci-images
-          path: images.tar.gz
-          retention-days: 1
-          if-no-files-found: error
-
   security-scan:
     name: security-scan
     runs-on: ubuntu-latest
@@ -222,14 +211,28 @@ jobs:
         # nginx-served bundle. Fail the gate on high+ runtime deps.
         run: npm audit --omit=dev --audit-level=high
 
-      - name: Download image tarball
-        uses: actions/download-artifact@v4
-        with:
-          name: ci-images
-          path: .
+      # Rebuild here instead of shipping multi-GB image tarballs between
+      # jobs (artifact transfer often fails at runner setup).
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Load images
-        run: docker load < images.tar.gz
+      - name: Build backend image for Trivy
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false
+          load: true
+          tags: vatecon-backend:ci
+          cache-from: type=gha,scope=backend
+
+      - name: Build frontend image for Trivy
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: false
+          load: true
+          tags: vatecon-frontend:ci
+          cache-from: type=gha,scope=frontend
 
       - name: Trivy — backend image
         uses: aquasecurity/trivy-action@0.28.0

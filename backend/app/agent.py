@@ -59,7 +59,7 @@ class SupportAgent:
         vector_store: VectorStore | None = None,
     ) -> None:
         self.embeddings = OpenAIEmbeddings(
-            api_key=settings.openai_api_key,
+            api_key=settings.openai_api_key,  # type: ignore[arg-type]
         )
         self.llm = self._build_llm(settings.openai_model)
         self.llm_client = get_llm_client()
@@ -78,7 +78,9 @@ class SupportAgent:
 
     def _build_llm(self, model: str) -> ChatOpenAI:
         return ChatOpenAI(
-            api_key=settings.openai_api_key,
+            # Settings keeps a plain str from env; langchain stubs want
+            # SecretStr. Runtime accepts str.
+            api_key=settings.openai_api_key,  # type: ignore[arg-type]
             model=model,
             temperature=0.3,
         )
@@ -258,8 +260,11 @@ class SupportAgent:
                 chunk.metadata["source"] = filename
 
             if len(chunks) <= 1:
-                loader = TextLoader(file_path, encoding="utf-8")
-                documents = loader.load()
+                text_loader = TextLoader(
+                    file_path,
+                    encoding="utf-8",
+                )
+                documents = text_loader.load()
                 for doc in documents:
                     doc.metadata["source"] = filename
                 chunks = self.fallback_splitter.split_documents(
