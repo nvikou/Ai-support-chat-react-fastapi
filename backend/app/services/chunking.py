@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from langchain.schema import Document
@@ -23,7 +23,6 @@ def split_markdown_text(
     strip_headers: bool = False,
 ) -> list[Document]:
     """Split Markdown into header-aware LangChain documents."""
-    from langchain.schema import Document
     from langchain.text_splitter import MarkdownHeaderTextSplitter
 
     markdown_text = normalize_markdown_whitespace(markdown_text)
@@ -36,7 +35,4 @@ def split_markdown_text(
         headers_to_split_on=headers_to_split_on,
         strip_headers=strip_headers,
     )
-    return cast(
-        list[Document],
-        markdown_splitter.split_text(markdown_text),
-    )
+    return markdown_splitter.split_text(markdown_text)
