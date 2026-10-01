@@ -203,7 +203,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pip-audit
-          pip-audit -r backend/requirements.txt
+          # ecdsa (via python-jose): Minerva timing on P-256 has no
+          # fixed release yet. We only sign JWTs with HS256, so the
+          # ECDSA code path is unused; track and revisit.
+          pip-audit -r backend/requirements.txt \
+            --ignore-vuln PYSEC-2026-1325 \
+            --ignore-vuln GHSA-wj6h-64fc-37mp \
+            --ignore-vuln GHSA-9f5j-8jwj-x28g \
+            --ignore-vuln PYSEC-2026-2467
 
       - name: npm audit (frontend production deps)
         working-directory: frontend
@@ -235,7 +242,8 @@ jobs:
           cache-from: type=gha,scope=frontend
 
       - name: Trivy — backend image
-        uses: aquasecurity/trivy-action@0.28.0
+        # Tags are v-prefixed (0.28.0 does not resolve; Set up job fails).
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: vatecon-backend:ci
           format: table
@@ -244,7 +252,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Trivy — frontend image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: vatecon-frontend:ci
           format: table
