@@ -6,7 +6,7 @@ import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from langchain.schema import Document
+    from langchain_core.documents import Document
 
 
 def normalize_markdown_whitespace(text: str) -> str:
@@ -23,7 +23,7 @@ def split_markdown_text(
     strip_headers: bool = False,
 ) -> list[Document]:
     """Split Markdown into header-aware LangChain documents."""
-    from langchain.text_splitter import MarkdownHeaderTextSplitter
+    from langchain_text_splitters import MarkdownHeaderTextSplitter
 
     markdown_text = normalize_markdown_whitespace(markdown_text)
     headers_to_split_on = [
