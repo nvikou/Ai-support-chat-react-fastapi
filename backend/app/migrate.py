@@ -34,3 +34,9 @@ async def run_migrations(conn: AsyncConnection) -> None:
         ADD COLUMN IF NOT EXISTS storage_path VARCHAR(512)
     """)
     )
+    await conn.execute(
+        text("""
+        ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS monthly_budget_usd FLOAT
+    """)
+    )

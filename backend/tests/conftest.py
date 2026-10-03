@@ -24,21 +24,22 @@ from sqlalchemy.pool import StaticPool
 # ---------------------------------------------------------------------------
 # Environment — must run before ``app.*`` imports pull Settings.
 # ---------------------------------------------------------------------------
-os.environ.setdefault("OPENAI_API_KEY", "test-key-not-real")
-os.environ.setdefault(
-    "DATABASE_URL",
-    "sqlite+aiosqlite:///:memory:",
+# Force test credentials — setdefault is unsafe when the shell already
+# exported leftover ADMIN_* / SECRET_KEY values from local smoke runs.
+os.environ["OPENAI_API_KEY"] = "test-key-not-real"  # pragma: allowlist secret
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+os.environ["SECRET_KEY"] = (
+    "test-secret-key-at-least-32-characters-long"  # pragma: allowlist secret
 )
-os.environ.setdefault(
-    "SECRET_KEY",
-    "test-secret-key-at-least-32-characters-long",
+os.environ["ADMIN_EMAIL"] = "admin@example.com"
+os.environ["ADMIN_PASSWORD"] = (
+    "test-admin-password"  # pragma: allowlist secret
 )
-os.environ.setdefault("ADMIN_EMAIL", "admin@example.com")
-os.environ.setdefault("ADMIN_PASSWORD", "test-admin-password")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
-os.environ.setdefault("ENVIRONMENT", "development")
-os.environ.setdefault("GROUNDEDNESS_ENABLED", "false")
+os.environ["REDIS_URL"] = "redis://localhost:6379/15"
+os.environ["ENVIRONMENT"] = "development"
+os.environ["GROUNDEDNESS_ENABLED"] = "false"
 
+import app.models  # noqa: E402, F401
 from app.agent_access import override_agent  # noqa: E402
 from app.database import (
     Base,  # noqa: E402

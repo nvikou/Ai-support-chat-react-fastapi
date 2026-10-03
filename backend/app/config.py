@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     # aggregators can filter without regex on free-form text.
     log_level: str = "INFO"
     log_json: bool = True
+    # Per-user monthly LLM budget (USD). Overridable on User row.
+    # At degrade_ratio → force fallback model; at block_ratio → refuse.
+    default_monthly_budget_usd: float = 10.0
+    budget_degrade_ratio: float = 0.8
+    budget_block_ratio: float = 1.0
 
     model_config = SettingsConfigDict(env_file=".env")
 

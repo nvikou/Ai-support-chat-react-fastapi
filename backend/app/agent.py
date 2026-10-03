@@ -21,6 +21,7 @@ from app.observability.metrics import (
     extract_token_usage,
     get_metrics,
 )
+from app.observability.pricing import estimate_cost_usd
 from app.services.chunking import split_markdown_text
 from app.services.confidence import safe_compute_confidence
 from app.services.escalation import match_escalation
@@ -54,14 +55,41 @@ def _message_text(response: Any) -> str:
     return str(content)
 
 
-def _observe_response_tokens(model: str, response: Any) -> None:
+def _observe_response_tokens(
+    model: str,
+    response: Any,
+    turn_usage: dict[str, Any],
+) -> None:
     prompt_tokens, completion_tokens = extract_token_usage(response)
+    turn_usage["prompt_tokens"] = (
+        int(turn_usage.get("prompt_tokens", 0)) + prompt_tokens
+    )
+    turn_usage["completion_tokens"] = (
+        int(turn_usage.get("completion_tokens", 0)) + completion_tokens
+    )
+    turn_usage["model"] = model
     if prompt_tokens or completion_tokens:
         get_metrics().observe_tokens(
             model=model,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
         )
+
+
+def _usage_fields(turn_usage: dict[str, Any]) -> dict[str, Any]:
+    prompt = int(turn_usage.get("prompt_tokens", 0))
+    completion = int(turn_usage.get("completion_tokens", 0))
+    model = str(turn_usage.get("model") or settings.openai_model)
+    return {
+        "model": model,
+        "prompt_tokens": prompt,
+        "completion_tokens": completion,
+        "cost_usd": estimate_cost_usd(
+            model,
+            prompt_tokens=prompt,
+            completion_tokens=completion,
+        ),
+    }
 
 
 def _chunks_to_store_docs(
@@ -123,8 +151,19 @@ class SupportAgent:
         self,
         question: str,
         history: list[dict[str, Any]],
+        *,
+        force_fallback: bool = False,
     ) -> dict[str, Any]:
         metrics = get_metrics()
+        turn_usage: dict[str, Any] = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "model": (
+                settings.openai_fallback_model
+                if force_fallback
+                else settings.openai_model
+            ),
+        }
         hits = self._retrieve(question)
         retrieval_scores = [hit.score for hit in hits]
         context = (
@@ -144,11 +183,22 @@ class SupportAgent:
         async def _operation(model: str) -> str:
             llm = self._build_llm(model)
             response = await llm.ainvoke([SystemMessage(content=prompt_body)])
-            _observe_response_tokens(model, response)
+            _observe_response_tokens(model, response, turn_usage)
             return _message_text(response)
 
+        primary = (
+            settings.openai_fallback_model
+            if force_fallback
+            else settings.openai_model
+        )
+        fallback = settings.openai_fallback_model
+
         try:
-            call = await self.llm_client.invoke(_operation)
+            call = await self.llm_client.invoke(
+                _operation,
+                primary_model=primary,
+                fallback_model=fallback,
+            )
         except LLMError as exc:
             metrics.observe_confidence(0.0)
             metrics.observe_escalation(
@@ -166,6 +216,7 @@ class SupportAgent:
                 "should_escalate": True,
                 "escalation_reason": f"LLM unavailable — {exc}",
                 "degraded": True,
+                **_usage_fields(turn_usage),
             }
 
         answer_text = call.value.strip()
@@ -179,6 +230,7 @@ class SupportAgent:
                 answer=answer_text,
                 documents=[hit.content for hit in hits],
                 model=call.model,
+                turn_usage=turn_usage,
             )
         except Exception as exc:
             logger.warning(
@@ -203,15 +255,16 @@ class SupportAgent:
         metrics.observe_confidence(confidence.score)
 
         pattern_match = match_escalation(question)
+        degraded = call.degraded or force_fallback
         should_escalate = (
             confidence.score < settings.confidence_escalation_threshold
             or pattern_match is not None
-            or call.degraded
+            or degraded
         )
 
         escalation_reason = None
         if should_escalate:
-            if call.degraded:
+            if degraded:
                 escalation_reason = (
                     "Answer served via fallback model "
                     f"({call.model}) — verify with a human"
@@ -222,7 +275,7 @@ class SupportAgent:
                 escalation_reason = confidence.reason
             metrics.observe_escalation(
                 classify_escalation_reason(
-                    degraded=call.degraded,
+                    degraded=degraded,
                     pattern_matched=pattern_match is not None,
                 )
             )
@@ -235,7 +288,8 @@ class SupportAgent:
             "sources": sources,
             "should_escalate": should_escalate,
             "escalation_reason": escalation_reason,
-            "degraded": call.degraded,
+            "degraded": degraded,
+            **_usage_fields(turn_usage),
         }
 
     async def _score_groundedness(
@@ -245,6 +299,7 @@ class SupportAgent:
         answer: str,
         documents: list[str],
         model: str,
+        turn_usage: dict[str, Any],
     ) -> float:
         llm = self._build_llm(model)
 
@@ -252,7 +307,11 @@ class SupportAgent:
             async def _op(active_model: str) -> str:
                 response = await llm.ainvoke(messages)
                 # Auditor tokens must count too or spend is under-reported.
-                _observe_response_tokens(active_model, response)
+                _observe_response_tokens(
+                    active_model,
+                    response,
+                    turn_usage,
+                )
                 return _message_text(response)
 
             # Reuse resilience policies for the auditor call too.

@@ -187,10 +187,14 @@ async def test_support_agent_records_rag_confidence_escalation() -> None:
         )
         == 1
     )
+    # answer() pins primary_model from Settings (not FakeLLMClient default).
+    from app.config import get_settings
+
+    model = get_settings().openai_model
     assert (
         get_metrics().registry.get_sample_value(
             "llm_tokens_total",
-            {"model": "fake-primary", "type": "prompt"},
+            {"model": model, "type": "prompt"},
         )
         == 11
     )

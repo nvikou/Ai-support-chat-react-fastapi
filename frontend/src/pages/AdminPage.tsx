@@ -29,6 +29,17 @@ type Stats = {
   total_users: number
 }
 
+type CostDashboard = {
+  total_cost_usd: number
+  avg_cost_per_conversation: number
+  top_users: Array<{
+    user_id: string
+    email: string
+    cost_usd: number
+  }>
+  daily_trend: Array<{ date: string; cost_usd: number }>
+}
+
 type Conversation = {
   id: string
   session_id: string
@@ -85,20 +96,23 @@ function StatCard({
 
 export default function AdminPage() {
   const [stats, setStats] = useState<Stats | null>(null)
+  const [costs, setCosts] = useState<CostDashboard | null>(null)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedConv, setSelectedConv] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [filter, setFilter] = useState<string>('all')
 
   const fetchData = useCallback(async () => {
-    const [statsRes, convsRes] = await Promise.all([
+    const [statsRes, convsRes, costsRes] = await Promise.all([
       apiFetch('/admin/stats'),
       apiFetch(
         `/admin/conversations${filter !== 'all' ? `?status=${filter}` : ''}`,
       ),
+      apiFetch('/admin/costs?days=7'),
     ])
     setStats(await statsRes.json())
     setConversations(await convsRes.json())
+    setCosts(await costsRes.json())
   }, [filter])
 
   useEffect(() => {
@@ -165,6 +179,64 @@ export default function AdminPage() {
             icon={Users}
             color="bg-violet-500"
           />
+        </div>
+      )}
+
+      {costs && (
+        <div className="grid lg:grid-cols-3 gap-4">
+          <StatCard
+            label="Total LLM Cost (USD)"
+            value={`$${costs.total_cost_usd.toFixed(4)}`}
+            icon={TrendingUp}
+            color="bg-rose-500"
+          />
+          <StatCard
+            label="Avg Cost / Conversation"
+            value={`$${costs.avg_cost_per_conversation.toFixed(4)}`}
+            icon={MessageSquare}
+            color="bg-orange-500"
+          />
+          <div className="card">
+            <h2 className="font-semibold text-gray-900 mb-3">
+              Top spenders
+            </h2>
+            <ul className="space-y-2 max-h-36 overflow-y-auto">
+              {costs.top_users.length === 0 && (
+                <li className="text-sm text-gray-400">No spend yet</li>
+              )}
+              {costs.top_users.map((u) => (
+                <li
+                  key={u.user_id}
+                  className="flex justify-between text-sm text-gray-700"
+                >
+                  <span className="truncate mr-2">{u.email}</span>
+                  <span className="font-medium">
+                    ${u.cost_usd.toFixed(4)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {costs && (
+        <div className="card">
+          <h2 className="font-semibold text-gray-900 mb-4">
+            Cost trend (7 days)
+          </h2>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={costs.daily_trend}>
+              <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Bar
+                dataKey="cost_usd"
+                fill="#f43f5e"
+                radius={[4, 4, 0, 0]}
+              />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       )}
 

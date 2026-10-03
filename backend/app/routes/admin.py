@@ -9,6 +9,7 @@ from app.agent_access import get_agent
 from app.database import get_db
 from app.deps import require_admin
 from app.models import Conversation, KnowledgeDocument, Message, User
+from app.services.cost_tracker import admin_cost_dashboard
 from app.services.ingest_jobs import (
     STATUS_FAILED,
     STATUS_INDEXED,
@@ -65,6 +66,17 @@ async def get_stats(
         "ai_resolution_rate": resolution_rate,
         "total_users": user_count,
     }
+
+
+@router.get("/costs")
+async def get_costs(
+    days: int = 7,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """LLM spend rollups for the admin cost dashboard."""
+    window = max(1, min(days, 90))
+    return await admin_cost_dashboard(db, days=window)
 
 
 @router.get("/vector-store")
@@ -239,6 +251,7 @@ async def list_users(
                 "role": u.role,
                 "is_active": u.is_active,
                 "conversation_count": conv_count or 0,
+                "monthly_budget_usd": u.monthly_budget_usd,
                 "last_login_at": (
                     u.last_login_at.isoformat() if u.last_login_at else None
                 ),
