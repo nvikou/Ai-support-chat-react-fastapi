@@ -3,10 +3,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 from app.config import get_settings
 from app.database import init_db
 from app.observability.logging import configure_logging
+from app.observability.metrics import (
+    METRICS_CONTENT_TYPE,
+    render_metrics,
+)
 from app.observability.middleware import (
     REQUEST_ID_HEADER,
     RequestIdMiddleware,
@@ -58,3 +63,12 @@ app.include_router(admin.router)
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": "VateCon AI Support"}
+
+
+@app.get("/metrics")
+async def metrics() -> Response:
+    """Prometheus scrape endpoint (unauthenticated on purpose)."""
+    return Response(
+        content=render_metrics(),
+        media_type=METRICS_CONTENT_TYPE,
+    )

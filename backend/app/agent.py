@@ -15,6 +15,12 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.config import get_settings
 from app.exceptions import LLMError
+from app.observability.metrics import (
+    Timer,
+    classify_escalation_reason,
+    extract_token_usage,
+    get_metrics,
+)
 from app.services.chunking import split_markdown_text
 from app.services.confidence import safe_compute_confidence
 from app.services.escalation import match_escalation
@@ -39,6 +45,23 @@ def _format_history(history: list[dict[str, Any]]) -> str:
         role = "Customer" if msg["role"] == "user" else "Agent"
         lines.append(f"{role}: {msg['content']}")
     return "\n".join(lines)
+
+
+def _message_text(response: Any) -> str:
+    content = response.content
+    if isinstance(content, list):
+        return "".join(str(part) for part in content)
+    return str(content)
+
+
+def _observe_response_tokens(model: str, response: Any) -> None:
+    prompt_tokens, completion_tokens = extract_token_usage(response)
+    if prompt_tokens or completion_tokens:
+        get_metrics().observe_tokens(
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
 
 
 def _chunks_to_store_docs(
@@ -90,8 +113,10 @@ class SupportAgent:
         question: str,
         k: int = 5,
     ) -> list[ScoredDocument]:
+        timer = Timer()
         hits = self.vector_store.search(question, k=k)
         get_vector_metrics().record_search()
+        get_metrics().observe_retrieval(timer.seconds())
         return hits
 
     async def answer(
@@ -99,6 +124,7 @@ class SupportAgent:
         question: str,
         history: list[dict[str, Any]],
     ) -> dict[str, Any]:
+        metrics = get_metrics()
         hits = self._retrieve(question)
         retrieval_scores = [hit.score for hit in hits]
         context = (
@@ -118,14 +144,16 @@ class SupportAgent:
         async def _operation(model: str) -> str:
             llm = self._build_llm(model)
             response = await llm.ainvoke([SystemMessage(content=prompt_body)])
-            content = response.content
-            if isinstance(content, list):
-                return "".join(str(part) for part in content)
-            return str(content)
+            _observe_response_tokens(model, response)
+            return _message_text(response)
 
         try:
             call = await self.llm_client.invoke(_operation)
         except LLMError as exc:
+            metrics.observe_confidence(0.0)
+            metrics.observe_escalation(
+                classify_escalation_reason(llm_unavailable=True)
+            )
             return {
                 "answer": (
                     "I'm temporarily unable to process your "
@@ -172,6 +200,7 @@ class SupportAgent:
             escalation_threshold=(settings.confidence_escalation_threshold),
             uncertainty_threshold=(settings.confidence_uncertainty_threshold),
         )
+        metrics.observe_confidence(confidence.score)
 
         pattern_match = match_escalation(question)
         should_escalate = (
@@ -191,6 +220,12 @@ class SupportAgent:
                 escalation_reason = pattern_match.reason
             else:
                 escalation_reason = confidence.reason
+            metrics.observe_escalation(
+                classify_escalation_reason(
+                    degraded=call.degraded,
+                    pattern_matched=pattern_match is not None,
+                )
+            )
 
         return {
             "answer": answer_text,
@@ -214,12 +249,11 @@ class SupportAgent:
         llm = self._build_llm(model)
 
         async def _invoke(messages: list[Any]) -> str:
-            async def _op(_model: str) -> str:
+            async def _op(active_model: str) -> str:
                 response = await llm.ainvoke(messages)
-                content = response.content
-                if isinstance(content, list):
-                    return "".join(str(part) for part in content)
-                return str(content)
+                # Auditor tokens must count too or spend is under-reported.
+                _observe_response_tokens(active_model, response)
+                return _message_text(response)
 
             # Reuse resilience policies for the auditor call too.
             result = await self.llm_client.invoke(
