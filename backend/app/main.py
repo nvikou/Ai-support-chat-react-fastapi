@@ -7,6 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.database import init_db
 from app.observability.logging import configure_logging
+from app.observability.middleware import (
+    REQUEST_ID_HEADER,
+    RequestIdMiddleware,
+)
 from app.redis_client import close_redis
 from app.routes import admin, auth, chat, knowledge, me
 
@@ -39,7 +43,10 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[REQUEST_ID_HEADER],
 )
+# Last added = outermost: bind request_id before CORS/route work.
+app.add_middleware(RequestIdMiddleware)
 
 app.include_router(auth.router)
 app.include_router(me.router)
