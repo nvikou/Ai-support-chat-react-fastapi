@@ -14,6 +14,8 @@ from contextvars import ContextVar, Token
 from datetime import UTC, datetime
 from typing import Any
 
+from app.observability.redaction import RedactionFilter
+
 # Bound by the request-id middleware; absent outside an HTTP request.
 request_id_ctx: ContextVar[str | None] = ContextVar(
     "request_id",
@@ -105,6 +107,7 @@ def configure_logging(
     root.handlers.clear()
 
     handler = logging.StreamHandler(sys.stdout)
+    handler.addFilter(RedactionFilter())
     if json_logs:
         handler.setFormatter(JsonFormatter())
     else:
