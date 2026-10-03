@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     # Knowledge upload hard cap (streamed; default 10 MiB)
     upload_max_bytes: int = 10 * 1024 * 1024
+    # Observability — JSON logs are the production default so
+    # aggregators can filter without regex on free-form text.
+    log_level: str = "INFO"
+    log_json: bool = True
 
     model_config = SettingsConfigDict(env_file=".env")
 

@@ -6,10 +6,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import init_db
+from app.observability.logging import configure_logging
 from app.redis_client import close_redis
 from app.routes import admin, auth, chat, knowledge, me
 
 settings = get_settings()
+configure_logging(
+    level=settings.log_level,
+    json_logs=settings.log_json,
+)
 
 
 @asynccontextmanager
