@@ -16,6 +16,7 @@ from app.observability.middleware import (
     REQUEST_ID_HEADER,
     RequestIdMiddleware,
 )
+from app.observability.tracing import setup_tracing, shutdown_tracing
 from app.redis_client import close_redis
 from app.routes import admin, auth, chat, knowledge, me
 
@@ -28,10 +29,12 @@ configure_logging(
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    setup_tracing(settings, app=_app)
     await init_db()
     try:
         yield
     finally:
+        shutdown_tracing()
         await close_redis()
 
 

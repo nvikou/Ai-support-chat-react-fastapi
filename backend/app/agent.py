@@ -22,6 +22,7 @@ from app.observability.metrics import (
     get_metrics,
 )
 from app.observability.pricing import estimate_cost_usd
+from app.observability.tracing import span
 from app.services.chunking import split_markdown_text
 from app.services.confidence import safe_compute_confidence
 from app.services.escalation import match_escalation
@@ -141,11 +142,12 @@ class SupportAgent:
         question: str,
         k: int = 5,
     ) -> list[ScoredDocument]:
-        timer = Timer()
-        hits = self.vector_store.search(question, k=k)
-        get_vector_metrics().record_search()
-        get_metrics().observe_retrieval(timer.seconds())
-        return hits
+        with span("rag.retrieval", **{"rag.top_k": k}):
+            timer = Timer()
+            hits = self.vector_store.search(question, k=k)
+            get_vector_metrics().record_search()
+            get_metrics().observe_retrieval(timer.seconds())
+            return hits
 
     async def answer(
         self,
@@ -164,6 +166,27 @@ class SupportAgent:
                 else settings.openai_model
             ),
         }
+        with span(
+            "rag.answer",
+            **{"llm.force_fallback": force_fallback},
+        ):
+            return await self._answer_traced(
+                question,
+                history,
+                force_fallback=force_fallback,
+                metrics=metrics,
+                turn_usage=turn_usage,
+            )
+
+    async def _answer_traced(
+        self,
+        question: str,
+        history: list[dict[str, Any]],
+        *,
+        force_fallback: bool,
+        metrics: Any,
+        turn_usage: dict[str, Any],
+    ) -> dict[str, Any]:
         hits = self._retrieve(question)
         retrieval_scores = [hit.score for hit in hits]
         context = (
@@ -225,13 +248,14 @@ class SupportAgent:
         )
 
         try:
-            groundedness = await self._score_groundedness(
-                question=question,
-                answer=answer_text,
-                documents=[hit.content for hit in hits],
-                model=call.model,
-                turn_usage=turn_usage,
-            )
+            with span("rag.groundedness"):
+                groundedness = await self._score_groundedness(
+                    question=question,
+                    answer=answer_text,
+                    documents=[hit.content for hit in hits],
+                    model=call.model,
+                    turn_usage=turn_usage,
+                )
         except Exception as exc:
             logger.warning(
                 "groundedness_fail_closed",
@@ -243,15 +267,26 @@ class SupportAgent:
             )
             groundedness = 0.0
 
-        confidence = safe_compute_confidence(
-            retrieval_scores,
-            groundedness,
-            len(answer_text),
-            bool(sources),
-            retrieval_min_similarity=(settings.retrieval_min_similarity),
-            escalation_threshold=(settings.confidence_escalation_threshold),
-            uncertainty_threshold=(settings.confidence_uncertainty_threshold),
-        )
+        with span("rag.confidence") as confidence_span:
+            confidence = safe_compute_confidence(
+                retrieval_scores,
+                groundedness,
+                len(answer_text),
+                bool(sources),
+                retrieval_min_similarity=(settings.retrieval_min_similarity),
+                escalation_threshold=(
+                    settings.confidence_escalation_threshold
+                ),
+                uncertainty_threshold=(
+                    settings.confidence_uncertainty_threshold
+                ),
+            )
+            confidence_span.set_attribute(
+                "rag.confidence_score", confidence.score
+            )
+            confidence_span.set_attribute(
+                "rag.confidence_band", confidence.band
+            )
         metrics.observe_confidence(confidence.score)
 
         pattern_match = match_escalation(question)

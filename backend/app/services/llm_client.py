@@ -19,6 +19,7 @@ from app.exceptions import (
     LLMUnavailable,
 )
 from app.observability.metrics import get_metrics
+from app.observability.tracing import span
 
 logger = logging.getLogger(__name__)
 
@@ -187,82 +188,90 @@ class LLMClient:
         model_used = primary
         status = "success"
 
-        try:
-            self._circuit.guard()
-
-            primary_error: LLMError | None = None
+        with span(
+            "llm.invoke",
+            **{"llm.model": primary, "llm.fallback_model": fallback},
+        ) as llm_span:
             try:
-                value = await self._retry_call(operation, primary)
-                self._circuit.record_success()
-                return LLMCallResult(
-                    value=value,
-                    model=primary,
-                    degraded=False,
-                )
-            except LLMError as err:
-                primary_error = err
+                self._circuit.guard()
 
-            if primary_error is None:
-                raise RuntimeError("LLM primary attempt left no error")
-
-            # Permanent client errors (400/401): do not fallback.
-            if not isinstance(primary_error, _TRANSIENT_ERRORS):
-                self._circuit.record_failure()
-                raise primary_error
-
-            logger.warning(
-                "llm_primary_exhausted",
-                extra={
-                    "event": "llm_primary_exhausted",
-                    "model": primary,
-                    "error_type": type(primary_error).__name__,
-                    "fallback_model": fallback,
-                },
-            )
-
-            if fallback and fallback != primary:
-                model_used = fallback
+                primary_error: LLMError | None = None
                 try:
-                    value = await self._attempt(operation, fallback)
+                    value = await self._retry_call(operation, primary)
                     self._circuit.record_success()
-                    logger.info(
-                        "llm_fallback_success",
-                        extra={
-                            "event": "llm_fallback_success",
-                            "model": fallback,
-                        },
-                    )
-                    status = "degraded"
+                    llm_span.set_attribute("llm.degraded", False)
                     return LLMCallResult(
                         value=value,
-                        model=fallback,
-                        degraded=True,
+                        model=primary,
+                        degraded=False,
                     )
-                except LLMError as fallback_error:
-                    self._circuit.record_failure()
-                    logger.error(
-                        "llm_fallback_failed",
-                        extra={
-                            "event": "llm_fallback_failed",
-                            "model": fallback,
-                            "error_type": type(fallback_error).__name__,
-                        },
-                    )
-                    raise fallback_error
+                except LLMError as err:
+                    primary_error = err
 
-            self._circuit.record_failure()
-            raise primary_error
-        except LLMError as err:
-            status = "error"
-            metrics.observe_llm_error(type(err).__name__)
-            raise
-        finally:
-            metrics.observe_llm_request(
-                model=model_used,
-                status=status,
-                duration_seconds=self._clock() - started,
-            )
-            metrics.set_circuit_state(is_open=self._circuit.is_open)
+                if primary_error is None:
+                    raise RuntimeError("LLM primary attempt left no error")
+
+                # Permanent client errors (400/401): do not fallback.
+                if not isinstance(primary_error, _TRANSIENT_ERRORS):
+                    self._circuit.record_failure()
+                    raise primary_error
+
+                logger.warning(
+                    "llm_primary_exhausted",
+                    extra={
+                        "event": "llm_primary_exhausted",
+                        "model": primary,
+                        "error_type": type(primary_error).__name__,
+                        "fallback_model": fallback,
+                    },
+                )
+
+                if fallback and fallback != primary:
+                    model_used = fallback
+                    try:
+                        value = await self._attempt(operation, fallback)
+                        self._circuit.record_success()
+                        logger.info(
+                            "llm_fallback_success",
+                            extra={
+                                "event": "llm_fallback_success",
+                                "model": fallback,
+                            },
+                        )
+                        status = "degraded"
+                        llm_span.set_attribute("llm.degraded", True)
+                        llm_span.set_attribute("llm.model", fallback)
+                        return LLMCallResult(
+                            value=value,
+                            model=fallback,
+                            degraded=True,
+                        )
+                    except LLMError as fallback_error:
+                        self._circuit.record_failure()
+                        logger.error(
+                            "llm_fallback_failed",
+                            extra={
+                                "event": "llm_fallback_failed",
+                                "model": fallback,
+                                "error_type": type(fallback_error).__name__,
+                            },
+                        )
+                        raise fallback_error
+
+                self._circuit.record_failure()
+                raise primary_error
+            except LLMError as err:
+                status = "error"
+                metrics.observe_llm_error(type(err).__name__)
+                llm_span.set_attribute("llm.error_type", type(err).__name__)
+                raise
+            finally:
+                metrics.observe_llm_request(
+                    model=model_used,
+                    status=status,
+                    duration_seconds=self._clock() - started,
+                )
+                metrics.set_circuit_state(is_open=self._circuit.is_open)
 
     async def _retry_call(
         self,
