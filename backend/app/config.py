@@ -45,6 +45,21 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     # Knowledge upload hard cap (streamed; default 10 MiB)
     upload_max_bytes: int = 10 * 1024 * 1024
+    # Observability — JSON logs are the production default so
+    # aggregators can filter without regex on free-form text.
+    log_level: str = "INFO"
+    log_json: bool = True
+    # Per-user monthly LLM budget (USD). Overridable on User row.
+    # At degrade_ratio → force fallback model; at block_ratio → refuse.
+    default_monthly_budget_usd: float = 10.0
+    budget_degrade_ratio: float = 0.8
+    budget_block_ratio: float = 1.0
+    # Tracing — off by default so CI/offline stays a no-op.
+    # Dev: OTEL_ENABLED=true OTEL_EXPORTER=console
+    # Prod: OTEL_EXPORTER=otlp OTEL_ENDPOINT=http://otel-collector:4318/v1/traces
+    otel_enabled: bool = False
+    otel_exporter: str = "console"
+    otel_endpoint: str = "http://localhost:4318/v1/traces"
 
     model_config = SettingsConfigDict(env_file=".env")
 

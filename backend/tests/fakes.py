@@ -58,6 +58,8 @@ class OfflineAgent:
         self,
         question: str,
         history: list[dict],
+        *,
+        force_fallback: bool = False,
     ) -> dict[str, Any]:
         hits = self.vector_store.search(question, k=3)
         if hits:
@@ -81,7 +83,11 @@ class OfflineAgent:
             "escalation_reason": (
                 None if confidence >= 0.5 else "low confidence"
             ),
-            "degraded": False,
+            "degraded": force_fallback,
+            "model": "fake-mini" if force_fallback else "fake-primary",
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "cost_usd": 0.0,
         }
 
     async def ingest_document(

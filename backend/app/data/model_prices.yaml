@@ -1,0 +1,13 @@
+# USD per 1_000 tokens. Keep in sync with provider pricing cards.
+# cost_tracker (admin budgets) and Prometheus llm_cost_usd_total
+# both read this file — never hard-code rates in Python.
+models:
+  gpt-4o:
+    prompt: 0.0025
+    completion: 0.01
+  gpt-4o-mini:
+    prompt: 0.00015
+    completion: 0.0006
+default:
+  prompt: 0.001
+  completion: 0.002

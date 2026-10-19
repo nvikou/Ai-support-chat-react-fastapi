@@ -5,10 +5,11 @@ from app.config import get_settings
 from app.models import User
 from app.security import hash_password
 
-settings = get_settings()
-
 
 async def seed_admin(db: AsyncSession) -> None:
+    # Resolve settings at call time — module-level cache can capture
+    # stale env from an earlier import during tests.
+    settings = get_settings()
     result = await db.execute(select(User).where(User.role == "admin"))
     if result.scalar_one_or_none():
         return

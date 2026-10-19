@@ -3,21 +3,38 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 from app.config import get_settings
 from app.database import init_db
+from app.observability.logging import configure_logging
+from app.observability.metrics import (
+    METRICS_CONTENT_TYPE,
+    render_metrics,
+)
+from app.observability.middleware import (
+    REQUEST_ID_HEADER,
+    RequestIdMiddleware,
+)
+from app.observability.tracing import setup_tracing, shutdown_tracing
 from app.redis_client import close_redis
 from app.routes import admin, auth, chat, knowledge, me
 
 settings = get_settings()
+configure_logging(
+    level=settings.log_level,
+    json_logs=settings.log_json,
+)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    setup_tracing(settings, app=_app)
     await init_db()
     try:
         yield
     finally:
+        shutdown_tracing()
         await close_redis()
 
 
@@ -34,7 +51,10 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[REQUEST_ID_HEADER],
 )
+# Last added = outermost: bind request_id before CORS/route work.
+app.add_middleware(RequestIdMiddleware)
 
 app.include_router(auth.router)
 app.include_router(me.router)
@@ -46,3 +66,12 @@ app.include_router(admin.router)
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": "VateCon AI Support"}
+
+
+@app.get("/metrics")
+async def metrics() -> Response:
+    """Prometheus scrape endpoint (unauthenticated on purpose)."""
+    return Response(
+        content=render_metrics(),
+        media_type=METRICS_CONTENT_TYPE,
+    )

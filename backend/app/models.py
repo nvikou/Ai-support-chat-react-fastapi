@@ -35,6 +35,10 @@ class User(Base):
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # NULL → fall back to Settings.default_monthly_budget_usd
+    monthly_budget_usd: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
 
     conversations: Mapped[list["Conversation"]] = relationship(
         "Conversation", back_populates="user"
@@ -43,6 +47,10 @@ class User(Base):
         "RefreshToken",
         back_populates="user",
         cascade="all, delete-orphan",
+    )
+    cost_events: Mapped[list["CostEvent"]] = relationship(
+        "CostEvent",
+        back_populates="user",
     )
 
 
@@ -162,3 +170,41 @@ class KnowledgeDocument(Base):
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
+
+
+class CostEvent(Base):
+    """Per-turn LLM spend ledger (message / conversation / user)."""
+
+    __tablename__ = "cost_events"
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id"),
+        index=True,
+    )
+    conversation_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("conversations.id"),
+        nullable=True,
+        index=True,
+    )
+    message_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("messages.id"),
+        nullable=True,
+    )
+    model: Mapped[str] = mapped_column(String(64))
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    purpose: Mapped[str] = mapped_column(String(32), default="answer_turn")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, index=True
+    )
+
+    user: Mapped["User"] = relationship("User", back_populates="cost_events")

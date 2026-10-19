@@ -8,6 +8,11 @@ from app.agent_access import get_agent
 from app.database import AsyncSessionLocal
 from app.models import Conversation, Message, User
 from app.redis_client import get_redis
+from app.services.cost_tracker import (
+    BudgetAction,
+    evaluate_budget,
+    record_turn_cost,
+)
 from app.services.rate_limit import (
     WS_MESSAGE_LIMIT,
     WS_MESSAGE_WINDOW_SECONDS,
@@ -146,6 +151,23 @@ async def chat_websocket(
                     )
                     continue
 
+                budget = await evaluate_budget(db, user)
+                if budget.action is BudgetAction.BLOCK:
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "content": (
+                                "Monthly AI budget exceeded. "
+                                "Contact support or try again next month."
+                            ),
+                            "budget": {
+                                "spend_usd": round(budget.spend_usd, 4),
+                                "budget_usd": round(budget.budget_usd, 4),
+                            },
+                        }
+                    )
+                    continue
+
                 if not conversation.title:
                     conversation.title = _truncate_title(user_message)
 
@@ -160,7 +182,11 @@ async def chat_websocket(
 
                 await websocket.send_json({"type": "typing"})
 
-                response = await agent.answer(user_message, history)
+                response = await agent.answer(
+                    user_message,
+                    history,
+                    force_fallback=(budget.action is BudgetAction.DEGRADE),
+                )
 
                 assistant_msg = Message(
                     conversation_id=conversation.id,
@@ -170,11 +196,24 @@ async def chat_websocket(
                     sources=json.dumps(response["sources"]),
                 )
                 db.add(assistant_msg)
+                await db.flush()
                 history.append(
                     {
                         "role": "assistant",
                         "content": response["answer"],
                     }
+                )
+
+                await record_turn_cost(
+                    db,
+                    user_id=user.id,
+                    conversation_id=conversation.id,
+                    message_id=assistant_msg.id,
+                    model=str(response.get("model") or "unknown"),
+                    prompt_tokens=int(response.get("prompt_tokens") or 0),
+                    completion_tokens=int(
+                        response.get("completion_tokens") or 0
+                    ),
                 )
 
                 if response["should_escalate"] and not conversation.escalated:
@@ -196,6 +235,8 @@ async def chat_websocket(
                         "escalated": conversation.escalated,
                         "escalation_reason": response.get("escalation_reason"),
                         "title": conversation.title,
+                        "degraded": bool(response.get("degraded")),
+                        "cost_usd": response.get("cost_usd", 0.0),
                     }
                 )
 
