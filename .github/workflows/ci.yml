@@ -206,11 +206,15 @@ jobs:
           # ecdsa (via python-jose): Minerva timing on P-256 has no
           # fixed release yet. We only sign JWTs with HS256, so the
           # ECDSA code path is unused; track and revisit.
+          # python-jose: algorithm-confusion via DER public keys —
+          # no fixed release past 3.5.0; we verify HS256 only.
           pip-audit -r backend/requirements.txt \
             --ignore-vuln PYSEC-2026-1325 \
             --ignore-vuln GHSA-wj6h-64fc-37mp \
             --ignore-vuln GHSA-9f5j-8jwj-x28g \
-            --ignore-vuln PYSEC-2026-2467
+            --ignore-vuln PYSEC-2026-2467 \
+            --ignore-vuln PYSEC-2026-4298 \
+            --ignore-vuln GHSA-3qf3-8w2g-rqmx
 
       - name: npm audit (frontend production deps)
         working-directory: frontend

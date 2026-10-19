@@ -197,9 +197,7 @@ export default function AdminPage() {
             color="bg-orange-500"
           />
           <div className="card">
-            <h2 className="font-semibold text-gray-900 mb-3">
-              Top spenders
-            </h2>
+            <h2 className="font-semibold text-gray-900 mb-3">Top spenders</h2>
             <ul className="space-y-2 max-h-36 overflow-y-auto">
               {costs.top_users.length === 0 && (
                 <li className="text-sm text-gray-400">No spend yet</li>
@@ -210,9 +208,7 @@ export default function AdminPage() {
                   className="flex justify-between text-sm text-gray-700"
                 >
                   <span className="truncate mr-2">{u.email}</span>
-                  <span className="font-medium">
-                    ${u.cost_usd.toFixed(4)}
-                  </span>
+                  <span className="font-medium">${u.cost_usd.toFixed(4)}</span>
                 </li>
               ))}
             </ul>
@@ -230,11 +226,7 @@ export default function AdminPage() {
               <XAxis dataKey="date" tick={{ fontSize: 10 }} />
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip />
-              <Bar
-                dataKey="cost_usd"
-                fill="#f43f5e"
-                radius={[4, 4, 0, 0]}
-              />
+              <Bar dataKey="cost_usd" fill="#f43f5e" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
