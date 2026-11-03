@@ -1,0 +1,57 @@
+# Offline RAG evaluation gate (PROMPT 7).
+# Weekly schedule publishes reports; PRs/main fail if recall@5 regresses.
+name: RAG Evaluation
+
+on:
+  schedule:
+    # Mondays 06:00 UTC — weekly quality snapshot + artifact.
+    - cron: "0 6 * * 1"
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: eval-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  RECALL_AT_5_THRESHOLD: "0.35"
+
+jobs:
+  eval:
+    name: eval
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/pyproject.toml
+            evaluation/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install -e "backend/[dev]"
+          pip install -r evaluation/requirements.txt
+
+      - name: Run evaluation gate
+        run: make eval RECALL_AT_5_THRESHOLD=${{ env.RECALL_AT_5_THRESHOLD }}
+
+      - name: Upload evaluation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-eval-reports
+          path: evaluation/reports/
+          if-no-files-found: warn
+          retention-days: 30

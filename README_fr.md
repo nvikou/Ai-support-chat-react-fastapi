@@ -52,7 +52,24 @@ Ouvrir **http://localhost:3000** dans le navigateur. Les sessions non authentifi
 
 ## Présentation
 
-VateCon AI Support Agent est un système complet qui permet à une entreprise d'automatiser 70 à 80 % de ses tickets de support client grâce à l'IA. L'agent répond en temps réel, cite ses sources, indique son niveau de confiance, et escalade automatiquement les cas complexes vers un humain.
+VateCon AI Support Agent est un assistant de support RAG : réponses
+en temps réel, citations de sources, score de confiance composite, et
+escalade des cas peu fiables ou sensibles vers un humain.
+
+Nous n’affirmons **pas** un taux invérifiable « 70–80 % de tickets
+automatisés ». L’évaluation offline sur un jeu synthétique étiqueté
+(`nimbusdesk-v1`, 180 questions) mesure actuellement :
+
+| Métrique | Valeur |
+|----------|-------:|
+| recall@5 | **0.625** |
+| MRR | 0.547 |
+| F1 escalade | 0.559 |
+| ECE (confiance) | 0.275 |
+
+Tableaux complets, date, modèle et limites :
+[evaluation/RESULTS.md](evaluation/RESULTS.md).
+Méthodologie : [evaluation/README.md](evaluation/README.md).
 
 **Stack technique :**
 - **Backend** : FastAPI + LangChain + OpenAI GPT-4o + FAISS (RAG) + PostgreSQL
@@ -345,7 +362,7 @@ pip install requests websocket-client colorama
 
 | Problème | Solution |
 |---|---|
-| Une équipe support répond aux mêmes questions 50x par jour | L'agent IA répond à 70–80 % des tickets automatiquement |
+| Une équipe support répond aux mêmes questions 50x par jour | Qualité mesurée (retrieval / escalade) — voir [RESULTS.md](evaluation/RESULTS.md) |
 | Former un chatbot prend des mois | Déposer ses docs suffit — opérationnel en minutes |
 | Les réponses incorrectes nuisent à la réputation | Score de confiance + escalade automatique vers un humain |
 | Pas de visibilité sur le support | Dashboard temps réel avec toutes les conversations |
