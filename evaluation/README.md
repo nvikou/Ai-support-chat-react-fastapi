@@ -22,3 +22,18 @@ Artifacts land in `evaluation/dataset/`:
 | `manifest.json` | Counts, seed, checksums |
 
 See `dataset/schema.py` for the JSONL field contract.
+
+## Harness
+
+Offline extractive stand-in (no live OpenAI). Measures retrieval,
+generation proxies, escalation PRF, confidence ECE, latency, and
+estimated cost / 1 000 requests.
+
+```bash
+pip install -r evaluation/requirements.txt   # charts
+python evaluation/run_eval.py
+```
+
+Reports land in `evaluation/reports/` (`report.json`, `report.md`,
+`reliability.png`, `retrieval.png`). The process exits non-zero if
+`recall@5` falls below the configured threshold (default `0.35`).
