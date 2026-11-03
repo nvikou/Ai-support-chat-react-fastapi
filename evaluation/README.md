@@ -44,3 +44,6 @@ process exits non-zero if `recall@5` is below `RECALL_AT_5_THRESHOLD`
 CI: `.github/workflows/eval.yml` runs the same gate on every PR/push
 to `main`, and on a weekly schedule (Monday 06:00 UTC) so reports are
 published as the `rag-eval-reports` artifact.
+
+Published numbers (date, metrics, limits):
+[`RESULTS.md`](RESULTS.md).
