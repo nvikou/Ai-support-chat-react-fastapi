@@ -47,6 +47,9 @@ _LIMITS = (
     "Synthetic NimbusDesk corpus; figures are not production SLAs."
 )
 
+# Quality gate default — keep in sync with Makefile / eval.yml.
+DEFAULT_RECALL_AT_5_THRESHOLD = 0.35
+
 
 def _load_questions(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
@@ -146,7 +149,7 @@ def run_evaluation(
             ),
         },
         "limits": _LIMITS,
-        "recall_at_5_threshold": 0.35,
+        "recall_at_5_threshold": DEFAULT_RECALL_AT_5_THRESHOLD,
     }
     return payload
 
@@ -165,6 +168,12 @@ def main() -> None:
     )
     parser.add_argument("--model", default="gpt-4o-mini")
     parser.add_argument("--k", type=int, default=5)
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=DEFAULT_RECALL_AT_5_THRESHOLD,
+        help="Fail if recall@5 is strictly below this value",
+    )
     args = parser.parse_args()
 
     payload = run_evaluation(
@@ -172,6 +181,7 @@ def main() -> None:
         model=args.model,
         k=args.k,
     )
+    payload["recall_at_5_threshold"] = float(args.threshold)
     args.output.mkdir(parents=True, exist_ok=True)
     write_json_report(args.output / "report.json", payload)
     write_markdown_report(args.output / "report.md", payload)
@@ -184,6 +194,7 @@ def main() -> None:
     print(
         f"dataset={payload['dataset_version']} "
         f"recall@5={recall5:.4f} "
+        f"threshold={threshold:.4f} "
         f"ece={payload['calibration']['ece']:.4f} "
         f"charts={charts}"
     )

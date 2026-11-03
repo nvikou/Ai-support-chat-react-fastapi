@@ -30,10 +30,17 @@ generation proxies, escalation PRF, confidence ECE, latency, and
 estimated cost / 1 000 requests.
 
 ```bash
+pip install -r backend/requirements.txt
+pip install -e "backend/[dev]"
 pip install -r evaluation/requirements.txt   # charts
-python evaluation/run_eval.py
+make eval
 ```
 
-Reports land in `evaluation/reports/` (`report.json`, `report.md`,
-`reliability.png`, `retrieval.png`). The process exits non-zero if
-`recall@5` falls below the configured threshold (default `0.35`).
+`make eval` runs `evaluation/tests` then `run_eval.py`. Reports land
+in `evaluation/reports/` (`report.json`, `report.md`, charts). The
+process exits non-zero if `recall@5` is below `RECALL_AT_5_THRESHOLD`
+(default `0.35`).
+
+CI: `.github/workflows/eval.yml` runs the same gate on every PR/push
+to `main`, and on a weekly schedule (Monday 06:00 UTC) so reports are
+published as the `rag-eval-reports` artifact.

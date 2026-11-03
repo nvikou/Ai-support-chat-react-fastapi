@@ -105,47 +105,48 @@ def write_png_charts(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     written: list[str] = []
+    try:
+        bins = payload.get("calibration", {}).get("reliability_bins", [])
+        if bins:
+            centers = [
+                (b["lower"] + b["upper"]) / 2.0 for b in bins if b.get("count", 0)
+            ]
+            acc = [b["accuracy"] for b in bins if b.get("count", 0)]
+            conf = [b["avg_confidence"] for b in bins if b.get("count", 0)]
+            fig, ax = plt.subplots(figsize=(6, 5))
+            # Avoid ax.legend() — some matplotlib+Py3.14 builds recurse.
+            ax.plot([0, 1], [0, 1], "k--")
+            if centers:
+                ax.bar(centers, acc, width=0.08, alpha=0.6, color="#93c5fd")
+                ax.plot(centers, conf, "o-", color="#1d4ed8")
+            ax.set_xlabel("Confidence")
+            ax.set_ylabel("Accuracy")
+            ax.set_title("Reliability (bars=accuracy, line=avg confidence)")
+            ax.set_xlim(0, 1)
+            ax.set_ylim(0, 1)
+            fig.tight_layout()
+            path = output_dir / "reliability.png"
+            fig.savefig(path, dpi=120)
+            plt.close(fig)
+            written.append(path.name)
 
-    bins = payload.get("calibration", {}).get("reliability_bins", [])
-    if bins:
-        centers = [(b["lower"] + b["upper"]) / 2.0 for b in bins if b.get("count", 0)]
-        acc = [b["accuracy"] for b in bins if b.get("count", 0)]
-        conf = [b["avg_confidence"] for b in bins if b.get("count", 0)]
-        fig, ax = plt.subplots(figsize=(6, 5))
-        ax.plot([0, 1], [0, 1], "k--", label="perfect")
-        if centers:
-            ax.bar(
-                centers,
-                acc,
-                width=0.08,
-                alpha=0.6,
-                label="accuracy",
-            )
-            ax.plot(centers, conf, "o-", label="avg confidence")
-        ax.set_xlabel("Confidence")
-        ax.set_ylabel("Accuracy")
-        ax.set_title("Reliability diagram")
-        ax.set_xlim(0, 1)
+        retrieval = payload.get("retrieval", {})
+        labels = ["recall@1", "recall@3", "recall@5", "mrr"]
+        values = [float(retrieval.get(key, 0.0)) for key in labels]
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.bar(labels, values, color="#2563eb")
         ax.set_ylim(0, 1)
-        ax.legend()
+        ax.set_ylabel("Score")
+        ax.set_title("Retrieval metrics")
         fig.tight_layout()
-        path = output_dir / "reliability.png"
+        path = output_dir / "retrieval.png"
         fig.savefig(path, dpi=120)
         plt.close(fig)
         written.append(path.name)
-
-    retrieval = payload.get("retrieval", {})
-    labels = ["recall@1", "recall@3", "recall@5", "mrr"]
-    values = [float(retrieval.get(key, 0.0)) for key in labels]
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.bar(labels, values, color="#2563eb")
-    ax.set_ylim(0, 1)
-    ax.set_ylabel("Score")
-    ax.set_title("Retrieval metrics")
-    fig.tight_layout()
-    path = output_dir / "retrieval.png"
-    fig.savefig(path, dpi=120)
-    plt.close(fig)
-    written.append(path.name)
+    except Exception:
+        # Charts are optional; never fail the quality gate on plotting.
+        for fig_num in list(getattr(plt, "get_fignums", lambda: [])()):
+            plt.close(fig_num)
+        return written
 
     return written
