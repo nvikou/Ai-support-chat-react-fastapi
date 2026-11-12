@@ -175,31 +175,117 @@ pip install requests websocket-client colorama
 
 ## Architecture
 
+Full map: [docs/architecture.md](docs/architecture.md). Decisions:
+[docs/adr/](docs/adr/README.md).
+
+### Happy path (chat turn)
+
+```mermaid
+sequenceDiagram
+    participant U as Client (React)
+    participant API as FastAPI
+    participant R as Redis
+    participant A as SupportAgent
+    participant V as FAISS
+    participant L as LLM
+    participant DB as Postgres
+
+    U->>API: POST /auth/ws-ticket (Bearer JWT)
+    API->>R: store one-time ticket
+    API-->>U: ticket
+    U->>API: WebSocket /ws/chat/{session_id}?ticket=…
+    API->>R: consume ticket (fail if replay)
+    U->>API: user message
+    API->>A: answer(session, text)
+    A->>V: retrieve top-k chunks
+    V-->>A: docs + distances
+    A->>L: invoke (timeout / retry / fallback)
+    L-->>A: completion
+    A->>A: groundedness + composite confidence
+    alt score low or sensitive keyword
+        A->>DB: escalate conversation
+        API-->>U: escalation event
+    else trusted enough
+        A->>DB: persist messages
+        API-->>U: assistant + confidence + sources
+    end
 ```
-┌─────────────────────────────────────────────────────┐
-│                   Client (React)                    │
-│   /login      → Login                               │
-│   /register   → Register                            │
-│   /           → Real-time chat + history            │
-│   /history    → All my conversations                │
-│   /admin      → Admin dashboard (admin only)        │
-│   /admin/users→ User management (admin only)        │
-│   /knowledge  → Document upload + FAQ (admin only)  │
-└────────────────────────┬────────────────────────────┘
-                         │ HTTP + WebSocket (Nginx proxy)
-┌────────────────────────▼────────────────────────────┐
-│                 Backend (FastAPI)                   │
-│                                                     │
-│  WebSocket /ws/chat/{session_id}                    │
-│       ↓                                             │
-│  SupportAgent (LangChain)                           │
-│       ↓                                             │
-│  FAISS (vectorstore RAG)  ←  docs / FAQ             │
-│       ↓                                             │
-│  GPT-4o → response + confidence score               │
-│       ↓                                             │
-│  PostgreSQL (users + conversation history)          │
-└─────────────────────────────────────────────────────┘
+
+### Degraded path (LLM failure)
+
+```mermaid
+sequenceDiagram
+    participant A as SupportAgent
+    participant C as LLM client
+    participant CB as Circuit breaker
+    participant P as Primary model
+    participant F as Fallback model
+    participant DB as Postgres
+    participant U as Client
+
+    A->>C: invoke(prompt)
+    C->>CB: guard()
+    alt circuit open
+        CB-->>C: reject
+        C-->>A: degraded / unavailable
+        A->>DB: escalate (human)
+        A-->>U: escalation + safe message
+    else circuit closed
+        C->>P: attempt (timeout)
+        alt success
+            P-->>C: response
+            C->>CB: record_success
+            C-->>A: text
+        else timeout / transient error
+            C->>P: retry with jitter
+            alt retry OK
+                P-->>C: response
+            else still failing
+                C->>F: fallback model
+                alt fallback OK
+                    F-->>C: response
+                    C->>CB: record_success
+                    Note over C,A: degraded=true flag
+                else fallback fails
+                    C->>CB: record_failure (may open)
+                    C-->>A: LLMError
+                    A->>DB: escalate (human)
+                    A-->>U: escalation event
+                end
+            end
+        end
+    end
 ```
+
+### Architecture decisions
+
+| ADR | Decision |
+|-----|----------|
+| [0001](docs/adr/0001-vector-store.md) | Keep FAISS; contain concurrency and name scale-out limits |
+| [0002](docs/adr/0002-faiss-vs-managed.md) | Prefer FAISS until measured thresholds trip (then pgvector/Qdrant) |
+| [0003](docs/adr/0003-websocket-vs-sse.md) | WebSocket for duplex chat (not SSE/polling) |
+| [0004](docs/adr/0004-composite-confidence.md) | Composite confidence; reject LLM self-scoring |
+| [0005](docs/adr/0005-markdown-header-chunking.md) | MarkdownHeaderTextSplitter + recursive fallback |
+| [0006](docs/adr/0006-jwt-refresh-cookie.md) | Short JWT + httpOnly refresh cookie |
+
+### Limitations & non-goals
+
+VateCon is a portfolio-grade support RAG demo with production *practices*,
+not a full multi-tenant SaaS. In particular it does **not**:
+
+- Claim a verified “X% of tickets automated” — only offline metrics in
+  [evaluation/RESULTS.md](evaluation/RESULTS.md)
+- Run a managed vector DB (FAISS on a volume; see ADR 0001/0002)
+- Safely scale **multiple ingest writers** without a durable job queue
+- Provide per-tenant knowledge isolation or hybrid search filters
+- Guarantee calibrated confidence on live traffic (offline ECE is
+  moderate; bands are directional)
+- Stream token-by-token LLM output (WebSocket carries turn-level events)
+- Replace human agents for refunds, fraud, or legal decisions — those
+  paths escalate by design
+- Offer SOC2 / HIPAA / customer-managed keys out of the box
+
+More operator detail: [docs/](docs/architecture.md),
+[SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
