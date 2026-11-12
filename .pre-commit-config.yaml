@@ -42,6 +42,7 @@ repos:
         exclude: >
           (?x)^(
             frontend/package-lock\.json|
+            evaluation/dataset/manifest\.json|
             .*\.png$|
             .*\.jpg$|
             .*\.jpeg$|

@@ -26,6 +26,9 @@ faiss_db/
 *.ipynb
 !notebooks/**/*.ipynb
 
+# Evaluation harness outputs (regenerate with run_eval.py)
+evaluation/reports/
+
 # Node / frontend
 frontend/node_modules/
 frontend/dist/

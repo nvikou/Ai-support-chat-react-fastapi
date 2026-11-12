@@ -1,0 +1,2 @@
+# Optional deps for evaluation charts (JSON/MD work without these).
+matplotlib==3.10.1
