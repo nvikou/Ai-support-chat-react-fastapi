@@ -22,7 +22,7 @@ dev = [
     "mypy==1.13.0",
     "types-PyYAML==6.0.12.20240917",
     "types-python-jose==3.3.4.20240106",
-    "pre-commit==4.0.1",
+    "pre-commit==4.7.0",
     "detect-secrets==1.5.0",
 ]
 
